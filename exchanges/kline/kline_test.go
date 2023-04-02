@@ -311,6 +311,11 @@ func TestTotalCandlesPerInterval(t *testing.T) {
 			4380,
 		},
 		{
+			"ThreeHour",
+			ThreeHour,
+			2920,
+		},
+		{
 			"FourHour",
 			FourHour,
 			2190,
@@ -1197,6 +1202,48 @@ func TestGetClosePriceAtTime(t *testing.T) {
 	_, err = k.GetClosePriceAtTime(tt.Add(time.Minute))
 	if !errors.Is(err, ErrNotFoundAtTime) {
 		t.Errorf("received '%v' expected '%v'", err, ErrNotFoundAtTime)
+	}
+}
+
+func TestNewInterval(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewInterval(0)
+	if !errors.Is(err, ErrInvalidIntervalNumber) {
+		t.Errorf("received '%v' expected '%v'", err, ErrInvalidIntervalNumber)
+	}
+
+	_, err = NewInterval(1337)
+	if !errors.Is(err, ErrUnsupportedInterval) {
+		t.Errorf("received '%v' expected '%v'", err, ErrUnsupportedInterval)
+	}
+
+	in, err := NewInterval(int64(OneDay))
+	if !errors.Is(err, nil) {
+		t.Errorf("received '%v' expected '%v'", err, nil)
+	}
+
+	if in != OneDay {
+		t.Errorf("received '%v' expected '%v'", in, OneDay)
+	}
+}
+
+func TestGetSupportedIntervals(t *testing.T) {
+	t.Parallel()
+
+	supported := GetSupportedIntervals()
+	if len(supported) == 0 {
+		t.Errorf("received '%v' expected '%v'", len(supported), "actual supported intervals")
+	}
+
+	for x := range supported {
+		if x == 0 {
+			continue
+		}
+
+		if supported[x] < supported[x-1] {
+			t.Error("supported list should be aligned to ascending")
+		}
 	}
 }
 

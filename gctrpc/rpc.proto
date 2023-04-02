@@ -1354,6 +1354,89 @@ message GetOrderbookAmountByImpactResponse {
   bool full_orderbook_side_consumed = 11;
 }
 
+message DCARequest {
+  string exchange = 1;
+  CurrencyPair pair = 2;
+  string asset = 3;
+  bool simulate = 4;
+  google.protobuf.Timestamp start = 5;
+  google.protobuf.Timestamp end = 6;
+  int64 interval = 7;
+  double amount = 8;
+  bool full_amount = 9;
+  double price_limit = 10;
+  double max_impact_slippage = 11;
+  double max_nominal_slippage = 12;
+  bool buy = 13;
+  double max_spread_percentage = 14;
+  bool aligned_to_interval = 15;
+  int64 retry_attempts = 16;
+  bool verbose = 17;
+  bool allow_trading_passed_end = 18;
+}
+
+message DCAStreamResponse {
+  string id = 1;
+  string strategy = 2;
+  string reason = 3;
+  bytes action = 4;
+  bool finished = 5;
+}
+
+message TWAPRequest {
+  string exchange = 1;
+  CurrencyPair pair = 2;
+  string asset = 3;
+  bool simulate = 4;
+  google.protobuf.Timestamp start = 5;
+  google.protobuf.Timestamp end = 6;
+  int64 interval = 7;
+  double amount = 8;
+  bool full_amount = 9;
+  double price_limit = 10;
+  double max_impact_slippage = 11;
+  double max_nominal_slippage = 12;
+  bool buy = 13;
+  double max_spread_percentage = 14;
+  bool aligned_to_interval = 15;
+  int64 retry_attempts = 16;
+  bool verbose = 17;
+  int64 twap_interval = 18;
+  bool allow_trading_passed_end = 19;
+}
+
+message TWAPStreamResponse {
+  string id = 1;
+  string strategy = 2;
+  string reason = 3;
+  bytes action = 4;
+  bool finished = 5;
+}
+
+message Strategy {
+  string id = 1;
+  string name = 2;
+  string state = 3;
+  bool stopped = 4;
+  bool running = 5;
+}
+
+message GetAllStrategiesRequest {
+  bool running = 1;
+}
+
+message GetAllStrategiesResponse {
+  repeated Strategy strategies = 1;
+}
+
+message StopStrategyRequest {
+  string id = 1;
+}
+
+message StopStrategyResponse {
+  string message = 1;
+}
+
 service GoCryptoTraderService {
   rpc GetInfo(GetInfoRequest) returns (GetInfoResponse) {
     option (google.api.http) = {get: "/v1/getinfo"};
@@ -1860,5 +1943,17 @@ service GoCryptoTraderService {
   }
   rpc GetOrderbookAmountByImpact(GetOrderbookAmountByImpactRequest) returns (GetOrderbookAmountByImpactResponse) {
     option (google.api.http) = {get: "/v1/getorderbookamountbyimpact"};
+  }
+  rpc GetAllStrategies(GetAllStrategiesRequest) returns (GetAllStrategiesResponse) {
+    option (google.api.http) = {get: "/v1/getallstrategies"};
+  }
+  rpc StopStrategy(StopStrategyRequest) returns (StopStrategyResponse) {
+    option (google.api.http) = {get: "/v1/stopstrategy"};
+  }
+  rpc DCAStream(DCARequest) returns (stream DCAStreamResponse) {
+    option (google.api.http) = {get: "/v1/dcastream"};
+  }
+  rpc TWAPStream(TWAPRequest) returns (stream TWAPStreamResponse) {
+    option (google.api.http) = {get: "/v1/twapstream"};
   }
 }

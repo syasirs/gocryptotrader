@@ -525,7 +525,6 @@ func StartEndTimeCheck(start, end time.Time) error {
 	if start.After(time.Now()) {
 		return ErrStartAfterTimeNow
 	}
-
 	return nil
 }
 

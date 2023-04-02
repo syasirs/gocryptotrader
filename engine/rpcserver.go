@@ -39,6 +39,8 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/strategy/dca"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/strategy/twap"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
 	"github.com/thrasher-corp/gocryptotrader/gctrpc"
@@ -77,6 +79,7 @@ var (
 	errGRPCShutdownSignalIsNil = errors.New("cannot shutdown, gRPC shutdown channel is nil")
 	errInvalidStrategy         = errors.New("invalid strategy")
 	errSpecificPairNotEnabled  = errors.New("specified pair is not enabled")
+	errEmptyUUID               = errors.New("empty uuid")
 )
 
 // RPCServer struct
@@ -148,6 +151,7 @@ func StartRPCServer(engine *Engine) {
 	opts := []grpc.ServerOption{
 		grpc.Creds(creds),
 		grpc.UnaryInterceptor(grpcauth.UnaryServerInterceptor(s.authenticateClient)),
+		grpc.StreamInterceptor(grpcauth.StreamServerInterceptor(s.authenticateClient)),
 	}
 	server := grpc.NewServer(opts...)
 	gctrpc.RegisterGoCryptoTraderServiceServer(server, &s)
@@ -5548,4 +5552,226 @@ func (s *RPCServer) GetOrderbookAmountByImpact(ctx context.Context, r *gctrpc.Ge
 		EndPrice:                            impact.EndPrice,
 		AverageOrderCost:                    impact.AverageOrderCost,
 	}, nil
+}
+
+// GetAllStrategies returns all strategies loaded or if requested only running
+// strategies.
+func (s *RPCServer) GetAllStrategies(ctx context.Context, r *gctrpc.GetAllStrategiesRequest) (*gctrpc.GetAllStrategiesResponse, error) {
+	strats, err := s.strategyManager.GetAllStrategies(r.Running)
+	if err != nil {
+		return nil, err
+	}
+
+	rpcStrats := make([]*gctrpc.Strategy, 0, len(strats))
+	for x := range strats {
+		if r.Running && !strats[x].Running {
+			continue
+		}
+		rpcStrats = append(rpcStrats, &gctrpc.Strategy{
+			Id:      strats[x].ID.String(),
+			Name:    strats[x].Strategy,
+			State:   strats[x].Strategy,
+			Stopped: !strats[x].Running,
+			Running: strats[x].Running,
+		})
+	}
+	return &gctrpc.GetAllStrategiesResponse{Strategies: rpcStrats}, nil
+}
+
+// StopStrategy stops a strategy by its corresponding UUID.
+func (s *RPCServer) StopStrategy(ctx context.Context, r *gctrpc.StopStrategyRequest) (*gctrpc.StopStrategyResponse, error) {
+	if r.Id == "" {
+		return nil, errEmptyUUID
+	}
+	id, err := uuid.FromString(r.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.strategyManager.Stop(id)
+	if err != nil {
+		return nil, err
+	}
+	return &gctrpc.StopStrategyResponse{Message: fmt.Sprintf("STRATEGY %s STOPPED", id)}, nil
+}
+
+// DCAStream manages an externally called DCA strategy.
+func (s *RPCServer) DCAStream(r *gctrpc.DCARequest, stream gctrpc.GoCryptoTraderService_DCAStreamServer) error {
+	exch, err := s.GetExchangeByName(r.Exchange)
+	if err != nil {
+		return err
+	}
+
+	pair, err := currency.NewPairFromStrings(r.Pair.Base, r.Pair.Quote)
+	if err != nil {
+		return err
+	}
+
+	if pair.IsEmpty() {
+		return errCurrencyPairUnset
+	}
+
+	as, err := asset.New(r.Asset)
+	if err != nil {
+		return err
+	}
+
+	err = checkParams(r.Exchange, exch, as, pair)
+	if err != nil {
+		return err
+	}
+
+	interval, err := kline.NewInterval(r.Interval)
+	if err != nil {
+		return err
+	}
+
+	ctx := stream.Context()
+	dcaStrat, err := dca.New(ctx, &dca.Config{
+		Exchange:                exch,
+		Pair:                    pair,
+		Asset:                   as,
+		Simulate:                r.Simulate,
+		Start:                   r.Start.AsTime(),
+		End:                     r.End.AsTime(),
+		Interval:                interval,
+		Amount:                  r.Amount,
+		FullAmount:              r.FullAmount,
+		PriceLimit:              r.PriceLimit,
+		MaxImpactSlippage:       r.MaxImpactSlippage,
+		MaxNominalSlippage:      r.MaxNominalSlippage,
+		Buy:                     r.Buy,
+		MaxSpreadPercentage:     r.MaxSpreadPercentage,
+		RetryAttempts:           r.RetryAttempts,
+		CandleStickAligned:      r.AlignedToInterval,
+		AllowTradingPastEndTime: r.AllowTradingPassedEnd,
+	})
+	if err != nil {
+		return err
+	}
+
+	id, err := s.strategyManager.Register(dcaStrat)
+	if err != nil {
+		return err
+	}
+
+	reporter, err := s.strategyManager.RunStream(ctx, id, r.Verbose)
+	if err != nil {
+		return err
+	}
+
+	for report := range reporter {
+		action, err := json.Marshal(report.Action)
+		if err != nil {
+			return err
+		}
+		err = stream.Send(&gctrpc.DCAStreamResponse{
+			Id:       report.ID.String(),
+			Strategy: report.Strategy,
+			Reason:   string(report.Reason),
+			Action:   action,
+			Finished: report.Finished,
+		})
+		if err != nil {
+			return err
+		}
+		if report.Finished {
+			break
+		}
+	}
+	return nil
+}
+
+// TWAPStream manages an externally called TWAP strategy.
+func (s *RPCServer) TWAPStream(r *gctrpc.TWAPRequest, stream gctrpc.GoCryptoTraderService_TWAPStreamServer) error {
+	exch, err := s.GetExchangeByName(r.Exchange)
+	if err != nil {
+		return err
+	}
+
+	pair, err := currency.NewPairFromStrings(r.Pair.Base, r.Pair.Quote)
+	if err != nil {
+		return err
+	}
+
+	if pair.IsEmpty() {
+		return errCurrencyPairUnset
+	}
+
+	as, err := asset.New(r.Asset)
+	if err != nil {
+		return err
+	}
+
+	err = checkParams(r.Exchange, exch, as, pair)
+	if err != nil {
+		return err
+	}
+
+	interval, err := kline.NewInterval(r.Interval)
+	if err != nil {
+		return err
+	}
+
+	twapInterval, err := kline.NewInterval(r.TwapInterval)
+	if err != nil {
+		return err
+	}
+
+	ctx := stream.Context()
+	twapStrat, err := twap.New(ctx, &twap.Config{
+		Exchange:                exch,
+		Pair:                    pair,
+		Asset:                   as,
+		Simulate:                r.Simulate,
+		Start:                   r.Start.AsTime(),
+		End:                     r.End.AsTime(),
+		Interval:                interval,
+		Amount:                  r.Amount,
+		FullAmount:              r.FullAmount,
+		PriceLimit:              r.PriceLimit,
+		MaxImpactSlippage:       r.MaxImpactSlippage,
+		MaxNominalSlippage:      r.MaxNominalSlippage,
+		Buy:                     r.Buy,
+		MaxSpreadPercentage:     r.MaxSpreadPercentage,
+		RetryAttempts:           r.RetryAttempts,
+		CandleStickAligned:      r.AlignedToInterval,
+		TWAP:                    twapInterval,
+		AllowTradingPastEndTime: r.AllowTradingPassedEnd,
+	})
+	if err != nil {
+		return err
+	}
+
+	id, err := s.strategyManager.Register(twapStrat)
+	if err != nil {
+		return err
+	}
+
+	reporter, err := s.strategyManager.RunStream(ctx, id, r.Verbose)
+	if err != nil {
+		return err
+	}
+
+	for report := range reporter {
+		action, err := json.Marshal(report.Action)
+		if err != nil {
+			return err
+		}
+
+		err = stream.Send(&gctrpc.TWAPStreamResponse{
+			Id:       report.ID.String(),
+			Strategy: report.Strategy,
+			Reason:   string(report.Reason),
+			Action:   action,
+			Finished: report.Finished,
+		})
+		if err != nil {
+			return err
+		}
+		if report.Finished {
+			break
+		}
+	}
+	return nil
 }

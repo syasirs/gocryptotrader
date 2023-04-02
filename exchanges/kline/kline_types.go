@@ -9,43 +9,14 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 )
 
-// Consts here define basic time intervals
-const (
-	FifteenSecond = Interval(15 * time.Second)
-	OneMin        = Interval(time.Minute)
-	ThreeMin      = 3 * OneMin
-	FiveMin       = 5 * OneMin
-	TenMin        = 10 * OneMin
-	FifteenMin    = 15 * OneMin
-	ThirtyMin     = 30 * OneMin
-	OneHour       = Interval(time.Hour)
-	TwoHour       = 2 * OneHour
-	ThreeHour     = 3 * OneHour
-	FourHour      = 4 * OneHour
-	SixHour       = 6 * OneHour
-	EightHour     = 8 * OneHour
-	TwelveHour    = 12 * OneHour
-	OneDay        = 24 * OneHour
-	TwoDay        = 2 * OneDay
-	ThreeDay      = 3 * OneDay
-	FiveDay       = 5 * OneDay
-	SevenDay      = 7 * OneDay
-	FifteenDay    = 15 * OneDay
-	OneWeek       = 7 * OneDay
-	TwoWeek       = 2 * OneWeek
-	OneMonth      = 30 * OneDay
-	ThreeMonth    = 3 * OneMonth
-	SixMonth      = 6 * OneMonth
-	OneYear       = 365 * OneDay
+var (
+	// ErrCanOnlyDownscaleCandles returns when attempting to upscale candles
+	ErrCanOnlyDownscaleCandles = errors.New("interval must be a longer duration to scale")
 )
 
 var (
-	// ErrUnsetInterval is an error for date range calculation
-	ErrUnsetInterval = errors.New("cannot calculate range, interval unset")
 	// ErrRequestExceedsExchangeLimits locale for exceeding rate limits message
 	ErrRequestExceedsExchangeLimits = errors.New("request will exceed exchange limits, please reduce start-end time window or use GetHistoricCandlesExtended")
-	// ErrUnsupportedInterval returns when the provided interval is not supported by an exchange
-	ErrUnsupportedInterval = errors.New("interval unsupported by exchange")
 	// ErrCanOnlyUpscaleCandles returns when attempting to upscale candles
 	ErrCanOnlyUpscaleCandles = errors.New("interval must be a longer duration to scale")
 	// ErrWholeNumberScaling returns when old interval data cannot neatly fit into new interval size
@@ -77,34 +48,6 @@ var (
 	errNilKline                  = errors.New("kline item is nil")
 
 	oneYearDurationInNano = float64(OneYear.Duration().Nanoseconds())
-
-	// SupportedIntervals is a list of all supported intervals
-	SupportedIntervals = []Interval{
-		FifteenSecond,
-		OneMin,
-		ThreeMin,
-		FiveMin,
-		TenMin,
-		FifteenMin,
-		ThirtyMin,
-		OneHour,
-		TwoHour,
-		ThreeHour,
-		FourHour,
-		SixHour,
-		EightHour,
-		TwelveHour,
-		OneDay,
-		ThreeDay,
-		SevenDay,
-		FifteenDay,
-		OneWeek,
-		TwoWeek,
-		OneMonth,
-		ThreeMonth,
-		SixMonth,
-		OneYear,
-	}
 )
 
 // Item holds all the relevant information for internal kline elements

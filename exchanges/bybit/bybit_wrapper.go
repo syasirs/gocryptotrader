@@ -458,7 +458,7 @@ func (by *Bybit) UpdateTickers(ctx context.Context, assetType asset.Item) error 
 		}
 
 	case asset.CoinMarginedFutures, asset.USDTMarginedFutures, asset.Futures:
-		tick, err := by.GetFuturesSymbolPriceTicker(ctx, currency.Pair{})
+		tick, err := by.GetFuturesSymbolPriceTicker(ctx, currency.EMPTYPAIR)
 		if err != nil {
 			return err
 		}
@@ -1438,7 +1438,7 @@ func (by *Bybit) GetActiveOrders(ctx context.Context, req *order.GetOrdersReques
 
 	if len(req.Pairs) == 0 {
 		// sending an empty currency pair retrieves data for all currencies
-		req.Pairs = append(req.Pairs, currency.Pair{})
+		req.Pairs = append(req.Pairs, currency.EMPTYPAIR)
 	}
 
 	var orders []order.Detail
@@ -2060,7 +2060,7 @@ func (by *Bybit) GetServerTime(ctx context.Context, a asset.Item) (time.Time, er
 func (by *Bybit) extractCurrencyPair(symbol string, item asset.Item) (currency.Pair, error) {
 	pairs, err := by.CurrencyPairs.GetPairs(item, true)
 	if err != nil {
-		return currency.Pair{}, err
+		return currency.EMPTYPAIR, err
 	}
 	return pairs.DeriveFrom(symbol)
 }

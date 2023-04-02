@@ -459,6 +459,168 @@
         ]
       }
     },
+    "/v1/dcastream": {
+      "get": {
+        "operationId": "GoCryptoTraderService_DCAStream",
+        "responses": {
+          "200": {
+            "description": "A successful response.(streaming responses)",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "result": {
+                  "$ref": "#/definitions/gctrpcDCAStreamResponse"
+                },
+                "error": {
+                  "$ref": "#/definitions/rpcStatus"
+                }
+              },
+              "title": "Stream result of gctrpcDCAStreamResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "pair.delimiter",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "pair.base",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "pair.quote",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "asset",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "simulate",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "date-time"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "date-time"
+          },
+          {
+            "name": "interval",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "amount",
+            "in": "query",
+            "required": false,
+            "type": "number",
+            "format": "double"
+          },
+          {
+            "name": "fullAmount",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "priceLimit",
+            "in": "query",
+            "required": false,
+            "type": "number",
+            "format": "double"
+          },
+          {
+            "name": "maxImpactSlippage",
+            "in": "query",
+            "required": false,
+            "type": "number",
+            "format": "double"
+          },
+          {
+            "name": "maxNominalSlippage",
+            "in": "query",
+            "required": false,
+            "type": "number",
+            "format": "double"
+          },
+          {
+            "name": "buy",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "maxSpreadPercentage",
+            "in": "query",
+            "required": false,
+            "type": "number",
+            "format": "double"
+          },
+          {
+            "name": "alignedToInterval",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "retryAttempts",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "verbose",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "allowTradingPassedEnd",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          }
+        ],
+        "tags": [
+          "GoCryptoTraderService"
+        ]
+      }
+    },
     "/v1/disableexchange": {
       "post": {
         "operationId": "GoCryptoTraderService_DisableExchange",
@@ -1173,6 +1335,36 @@
           },
           {
             "name": "includePredictedRate",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          }
+        ],
+        "tags": [
+          "GoCryptoTraderService"
+        ]
+      }
+    },
+    "/v1/getallstrategies": {
+      "get": {
+        "operationId": "GoCryptoTraderService_GetAllStrategies",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/gctrpcGetAllStrategiesResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "running",
             "in": "query",
             "required": false,
             "type": "boolean"
@@ -3790,6 +3982,36 @@
         ]
       }
     },
+    "/v1/stopstrategy": {
+      "get": {
+        "operationId": "GoCryptoTraderService_StopStrategy",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/gctrpcStopStrategyResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "GoCryptoTraderService"
+        ]
+      }
+    },
     "/v1/submitorder": {
       "post": {
         "operationId": "GoCryptoTraderService_SubmitOrder",
@@ -3815,6 +4037,175 @@
             "schema": {
               "$ref": "#/definitions/gctrpcSubmitOrderRequest"
             }
+          }
+        ],
+        "tags": [
+          "GoCryptoTraderService"
+        ]
+      }
+    },
+    "/v1/twapstream": {
+      "get": {
+        "operationId": "GoCryptoTraderService_TWAPStream",
+        "responses": {
+          "200": {
+            "description": "A successful response.(streaming responses)",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "result": {
+                  "$ref": "#/definitions/gctrpcTWAPStreamResponse"
+                },
+                "error": {
+                  "$ref": "#/definitions/rpcStatus"
+                }
+              },
+              "title": "Stream result of gctrpcTWAPStreamResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "pair.delimiter",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "pair.base",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "pair.quote",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "asset",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "simulate",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "date-time"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "date-time"
+          },
+          {
+            "name": "interval",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "amount",
+            "in": "query",
+            "required": false,
+            "type": "number",
+            "format": "double"
+          },
+          {
+            "name": "fullAmount",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "priceLimit",
+            "in": "query",
+            "required": false,
+            "type": "number",
+            "format": "double"
+          },
+          {
+            "name": "maxImpactSlippage",
+            "in": "query",
+            "required": false,
+            "type": "number",
+            "format": "double"
+          },
+          {
+            "name": "maxNominalSlippage",
+            "in": "query",
+            "required": false,
+            "type": "number",
+            "format": "double"
+          },
+          {
+            "name": "buy",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "maxSpreadPercentage",
+            "in": "query",
+            "required": false,
+            "type": "number",
+            "format": "double"
+          },
+          {
+            "name": "alignedToInterval",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "retryAttempts",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "verbose",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "twapInterval",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "allowTradingPassedEnd",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
           }
         ],
         "tags": [
@@ -4771,6 +5162,27 @@
         }
       }
     },
+    "gctrpcDCAStreamResponse": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "strategy": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string",
+          "format": "byte"
+        },
+        "finished": {
+          "type": "boolean"
+        }
+      }
+    },
     "gctrpcDataHistoryJob": {
       "type": "object",
       "properties": {
@@ -5284,6 +5696,17 @@
           "type": "array",
           "items": {
             "$ref": "#/definitions/gctrpcAccount"
+          }
+        }
+      }
+    },
+    "gctrpcGetAllStrategiesResponse": {
+      "type": "object",
+      "properties": {
+        "strategies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/gctrpcStrategy"
           }
         }
       }
@@ -6513,6 +6936,34 @@
         }
       }
     },
+    "gctrpcStopStrategyResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "gctrpcStrategy": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "stopped": {
+          "type": "boolean"
+        },
+        "running": {
+          "type": "boolean"
+        }
+      }
+    },
     "gctrpcSubmitOrderRequest": {
       "type": "object",
       "properties": {
@@ -6558,6 +7009,27 @@
           "items": {
             "$ref": "#/definitions/gctrpcTrades"
           }
+        }
+      }
+    },
+    "gctrpcTWAPStreamResponse": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "strategy": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string",
+          "format": "byte"
+        },
+        "finished": {
+          "type": "boolean"
         }
       }
     },
