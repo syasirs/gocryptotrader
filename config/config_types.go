@@ -34,6 +34,7 @@ const (
 	DefaultAPIKey                        = "Key"
 	DefaultAPISecret                     = "Secret"
 	DefaultAPIClientID                   = "ClientID"
+	DefaultAPIPrivateKey                 = "PrivateKey"
 	defaultDataHistoryMonitorCheckTimer  = time.Minute
 	defaultCurrencyStateManagerDelay     = time.Minute
 	defaultMaxJobsPerCycle               = 5
@@ -334,6 +335,7 @@ type APICredentialsConfig struct {
 	OTPSecret     string `json:"otpSecret,omitempty"`
 	TradePassword string `json:"tradePassword,omitempty"`
 	PIN           string `json:"pin,omitempty"`
+	PrivateKey    string `json:"privateKey,omitempty"`
 }
 
 // APICredentialsValidatorConfig stores the API credentials validator settings
@@ -345,6 +347,7 @@ type APICredentialsValidatorConfig struct {
 	RequiresSecret             bool `json:"requiresSecret,omitempty"`
 	RequiresClientID           bool `json:"requiresClientID,omitempty"`
 	RequiresBase64DecodeSecret bool `json:"requiresBase64DecodeSecret,omitempty"`
+	RequiresPrivateKey         bool `json:"requiresPrivateKey,omitempty"`
 }
 
 // APIConfig stores the exchange API config

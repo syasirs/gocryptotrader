@@ -82,6 +82,8 @@ type Submit struct {
 	// and cannot retrieve fees data immediately
 	RetrieveFeeDelay time.Duration
 
+	// ExpirationTime some exchanges require time for the placed order to expire after
+	ExpirationTime time.Time
 	// Hidden when enabled orders not displaying in order book.
 	Hidden bool
 	// TradeMode specifies the trading mode for margin and non-margin orders: see okcoin_wrapper.go
