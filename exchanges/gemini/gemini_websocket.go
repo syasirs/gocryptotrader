@@ -33,25 +33,22 @@ const (
 	geminiWsOrderEvents            = "order/events"
 )
 
-// Instantiates a communications channel between websocket connections
-var comms = make(chan stream.Response)
-
 // WsConnect initiates a websocket connection
 func (g *Gemini) WsConnect() error {
 	if !g.Websocket.IsEnabled() || !g.IsEnabled() {
 		return errors.New(stream.WebsocketNotEnabled)
 	}
-
+	spotWebsocket, err := g.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return fmt.Errorf("%w asset type: %v", err, asset.Futures)
+	}
 	var dialer websocket.Dialer
-	err := g.Websocket.Conn.Dial(&dialer, http.Header{})
+	err = spotWebsocket.Conn.Dial(&dialer, http.Header{})
 	if err != nil {
 		return err
 	}
 
-	g.Websocket.Wg.Add(2)
-	go g.wsReadData()
-	go g.wsFunnelConnectionData(g.Websocket.Conn)
-
+	go g.wsReadData(spotWebsocket.Conn)
 	if g.Websocket.CanUseAuthenticatedEndpoints() {
 		err := g.WsAuth(context.TODO(), &dialer)
 		if err != nil {
@@ -90,6 +87,10 @@ func (g *Gemini) GenerateDefaultSubscriptions() ([]subscription.Subscription, er
 
 // Subscribe sends a websocket message to receive data from the channel
 func (g *Gemini) Subscribe(channelsToSubscribe []subscription.Subscription) error {
+	spotWebsocket, err := g.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	channels := make([]string, 0, len(channelsToSubscribe))
 	for x := range channelsToSubscribe {
 		if common.StringDataCompareInsensitive(channels, channelsToSubscribe[x].Channel) {
@@ -123,17 +124,21 @@ func (g *Gemini) Subscribe(channelsToSubscribe []subscription.Subscription) erro
 		Type:          "subscribe",
 		Subscriptions: subs,
 	}
-	err = g.Websocket.Conn.SendJSONMessage(wsSub)
+	err = spotWebsocket.Conn.SendJSONMessage(wsSub)
 	if err != nil {
 		return err
 	}
 
-	g.Websocket.AddSuccessfulSubscriptions(channelsToSubscribe...)
+	spotWebsocket.AddSuccessfulSubscriptions(channelsToSubscribe...)
 	return nil
 }
 
 // Unsubscribe sends a websocket message to stop receiving data from the channel
 func (g *Gemini) Unsubscribe(channelsToUnsubscribe []subscription.Subscription) error {
+	spotWebsocket, err := g.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	channels := make([]string, 0, len(channelsToUnsubscribe))
 	for x := range channelsToUnsubscribe {
 		if common.StringDataCompareInsensitive(channels, channelsToUnsubscribe[x].Channel) {
@@ -167,12 +172,12 @@ func (g *Gemini) Unsubscribe(channelsToUnsubscribe []subscription.Subscription) 
 		Type:          "unsubscribe",
 		Subscriptions: subs,
 	}
-	err = g.Websocket.Conn.SendJSONMessage(wsSub)
+	err = spotWebsocket.Conn.SendJSONMessage(wsSub)
 	if err != nil {
 		return err
 	}
 
-	g.Websocket.RemoveSubscriptions(channelsToUnsubscribe...)
+	spotWebsocket.RemoveSubscriptions(channelsToUnsubscribe...)
 	return nil
 }
 
@@ -180,6 +185,10 @@ func (g *Gemini) Unsubscribe(channelsToUnsubscribe []subscription.Subscription) 
 func (g *Gemini) WsAuth(ctx context.Context, dialer *websocket.Dialer) error {
 	if !g.IsWebsocketAuthenticationSupported() {
 		return fmt.Errorf("%v AuthenticatedWebsocketAPISupport not enabled", g.Name)
+	}
+	spotWebsocket, err := g.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return fmt.Errorf("%w asset type: %v", err, asset.Spot)
 	}
 	creds, err := g.GetCredentials(ctx)
 	if err != nil {
@@ -214,52 +223,42 @@ func (g *Gemini) WsAuth(ctx context.Context, dialer *websocket.Dialer) error {
 	headers.Add("X-GEMINI-SIGNATURE", crypto.HexEncodeToString(hmac))
 	headers.Add("Cache-Control", "no-cache")
 
-	err = g.Websocket.AuthConn.Dial(dialer, headers)
+	err = spotWebsocket.AuthConn.Dial(dialer, headers)
 	if err != nil {
 		return fmt.Errorf("%v Websocket connection %v error. Error %v", g.Name, endpoint, err)
 	}
-	go g.wsFunnelConnectionData(g.Websocket.AuthConn)
+	go g.wsReadData(spotWebsocket.AuthConn)
 	return nil
 }
 
-// wsFunnelConnectionData receives data from multiple connections and passes it to wsReadData
-func (g *Gemini) wsFunnelConnectionData(ws stream.Connection) {
-	defer g.Websocket.Wg.Done()
-	for {
-		resp := ws.ReadMessage()
-		if resp.Raw == nil {
-			return
-		}
-		comms <- stream.Response{Raw: resp.Raw}
-	}
-}
-
 // wsReadData receives and passes on websocket messages for processing
-func (g *Gemini) wsReadData() {
-	defer g.Websocket.Wg.Done()
+func (g *Gemini) wsReadData(ws stream.Connection) {
+	spotWebsocket, err := g.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		log.Errorf(log.ExchangeSys, "%v asset type: %v", err, asset.Spot)
+		return
+	}
+	spotWebsocket.Wg.Add(1)
+	defer spotWebsocket.Wg.Done()
 	for {
 		select {
-		case <-g.Websocket.ShutdownC:
-			select {
-			case resp := <-comms:
-				err := g.wsHandleData(resp.Raw)
-				if err != nil {
-					select {
-					case g.Websocket.DataHandler <- err:
-					default:
-						log.Errorf(log.WebsocketMgr,
-							"%s websocket handle data error: %v",
-							g.Name,
-							err)
-					}
-				}
-			default:
-			}
+		case <-spotWebsocket.ShutdownC:
 			return
-		case resp := <-comms:
+		default:
+			resp := ws.ReadMessage()
+			if resp.Raw == nil {
+				return
+			}
 			err := g.wsHandleData(resp.Raw)
 			if err != nil {
-				g.Websocket.DataHandler <- err
+				select {
+				case g.Websocket.DataHandler <- err:
+				default:
+					log.Errorf(log.WebsocketMgr,
+						"%s websocket handle data error: %v",
+						g.Name,
+						err)
+				}
 			}
 		}
 	}

@@ -199,7 +199,7 @@ func (b *Bitfinex) SetDefaults() {
 	if err != nil {
 		log.Errorln(log.ExchangeSys, err)
 	}
-	b.Websocket = stream.New()
+	b.Websocket = stream.NewWrapper()
 	b.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	b.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	b.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
@@ -225,24 +225,30 @@ func (b *Bitfinex) Setup(exch *config.Exchange) error {
 		return err
 	}
 
-	err = b.Websocket.Setup(&stream.WebsocketSetup{
-		ExchangeConfig:        exch,
+	err = b.Websocket.Setup(&stream.WebsocketWrapperSetup{
+		ExchangeConfig:         exch,
+		ConnectionMonitorDelay: exch.ConnectionMonitorDelay,
+		OrderbookBufferConfig: buffer.Config{
+			UpdateEntriesByID: true,
+		},
+		Features: &b.Features.Supports.WebsocketCapabilities,
+	})
+	if err != nil {
+		return err
+	}
+	spotWebsocket, err := b.Websocket.AddWebsocket(&stream.WebsocketSetup{
 		DefaultURL:            publicBitfinexWebsocketEndpoint,
 		RunningURL:            wsEndpoint,
 		Connector:             b.WsConnect,
 		Subscriber:            b.Subscribe,
 		Unsubscriber:          b.Unsubscribe,
 		GenerateSubscriptions: b.GenerateDefaultSubscriptions,
-		Features:              &b.Features.Supports.WebsocketCapabilities,
-		OrderbookBufferConfig: buffer.Config{
-			UpdateEntriesByID: true,
-		},
+		AssetType:             asset.Spot,
 	})
 	if err != nil {
 		return err
 	}
-
-	err = b.Websocket.SetupNewConnection(stream.ConnectionSetup{
+	err = spotWebsocket.SetupNewConnection(stream.ConnectionSetup{
 		ResponseCheckTimeout: exch.WebsocketResponseCheckTimeout,
 		ResponseMaxLimit:     exch.WebsocketResponseMaxLimit,
 		URL:                  publicBitfinexWebsocketEndpoint,
@@ -251,7 +257,7 @@ func (b *Bitfinex) Setup(exch *config.Exchange) error {
 		return err
 	}
 
-	return b.Websocket.SetupNewConnection(stream.ConnectionSetup{
+	return spotWebsocket.SetupNewConnection(stream.ConnectionSetup{
 		ResponseCheckTimeout: exch.WebsocketResponseCheckTimeout,
 		ResponseMaxLimit:     exch.WebsocketResponseMaxLimit,
 		URL:                  authenticatedBitfinexWebsocketEndpoint,
@@ -689,7 +695,8 @@ func (b *Bitfinex) SubmitOrder(ctx context.Context, o *order.Submit) (*order.Sub
 
 	var orderID string
 	status := order.New
-	if b.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
+	spotWebsocket, err := b.Websocket.GetAssetWebsocket(asset.Spot)
+	if err == nil && spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
 		symbolStr, err := b.fixCasing(fPair, o.AssetType) //nolint:govet // intentional shadow of err
 		if err != nil {
 			return nil, err
@@ -699,10 +706,11 @@ func (b *Bitfinex) SubmitOrder(ctx context.Context, o *order.Submit) (*order.Sub
 			orderType = "EXCHANGE " + orderType
 		}
 		req := &WsNewOrderRequest{
-			Type:   orderType,
-			Symbol: symbolStr,
-			Amount: o.Amount,
-			Price:  o.Price,
+			CustomID: spotWebsocket.AuthConn.GenerateMessageID(false),
+			Type:     orderType,
+			Symbol:   symbolStr,
+			Amount:   o.Amount,
+			Price:    o.Price,
 		}
 		if o.Side.IsShort() && o.Amount > 0 {
 			// All v2 apis use negatives for Short side
@@ -745,13 +753,23 @@ func (b *Bitfinex) SubmitOrder(ctx context.Context, o *order.Submit) (*order.Sub
 
 // ModifyOrder will allow of changing orderbook placement and limit to
 // market conversion
-func (b *Bitfinex) ModifyOrder(ctx context.Context, action *order.Modify) (*order.ModifyResponse, error) {
-	if err := action.Validate(); err != nil {
+func (b *Bitfinex) ModifyOrder(_ context.Context, action *order.Modify) (*order.ModifyResponse, error) {
+	spotWebsocket, err := b.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return nil, fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
+	if !spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
+		return nil, common.ErrNotYetImplemented
+	}
+
+	err = action.Validate()
+	if err != nil {
 		return nil, err
 	}
 
-	if b.Websocket.IsEnabled() && b.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
-		orderIDInt, err := strconv.ParseInt(action.OrderID, 10, 64)
+	if b.Websocket.IsEnabled() && spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
+		var orderIDInt int64
+		orderIDInt, err = strconv.ParseInt(action.OrderID, 10, 64)
 		if err != nil {
 			return &order.ModifyResponse{OrderID: action.OrderID}, err
 		}
@@ -771,7 +789,7 @@ func (b *Bitfinex) ModifyOrder(ctx context.Context, action *order.Modify) (*orde
 		return action.DeriveModifyResponse()
 	}
 
-	_, err := b.OrderUpdate(ctx, action.OrderID, "", action.ClientOrderID, action.Amount, action.Price, -1)
+	_, err = b.OrderUpdate(context.Background(), action.OrderID, "", action.ClientOrderID, action.Amount, action.Price, -1)
 	if err != nil {
 		return nil, err
 	}
@@ -788,7 +806,8 @@ func (b *Bitfinex) CancelOrder(ctx context.Context, o *order.Cancel) error {
 	if err != nil {
 		return err
 	}
-	if b.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
+	spotWebsocket, err := b.Websocket.GetAssetWebsocket(asset.Spot)
+	if err == nil && spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
 		err = b.WsCancelOrder(orderIDInt)
 	} else {
 		_, err = b.CancelExistingOrder(ctx, orderIDInt)
@@ -806,8 +825,8 @@ func (b *Bitfinex) CancelBatchOrders(_ context.Context, _ []order.Cancel) (*orde
 
 // CancelAllOrders cancels all orders associated with a currency pair
 func (b *Bitfinex) CancelAllOrders(ctx context.Context, _ *order.Cancel) (order.CancelAllResponse, error) {
-	var err error
-	if b.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
+	spotWebsocket, err := b.Websocket.GetAssetWebsocket(asset.Spot)
+	if err == nil && spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
 		err = b.WsCancelAllOrders()
 	} else {
 		_, err = b.CancelAllExistingOrders(ctx)

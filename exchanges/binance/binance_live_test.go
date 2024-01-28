@@ -52,6 +52,8 @@ func TestMain(m *testing.M) {
 		log.Fatal("Binance setup error", err)
 	}
 	b.setupOrderbookManager()
+	request.MaxRequestJobs = 100
+	b.Websocket = sharedtestvalues.NewTestWrapperWebsocket()
 	b.Websocket.DataHandler = sharedtestvalues.GetWebsocketInterfaceChannelOverride()
 	log.Printf(sharedtestvalues.LiveTesting, b.Name)
 	err = b.UpdateTradablePairs(context.Background(), true)

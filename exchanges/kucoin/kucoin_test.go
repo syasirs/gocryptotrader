@@ -70,7 +70,7 @@ func TestMain(m *testing.M) {
 	}
 
 	ku.SetDefaults()
-	ku.Websocket = sharedtestvalues.NewTestWebsocket()
+	ku.Websocket = sharedtestvalues.NewTestWrapperWebsocket()
 	ku.Websocket.Orderbook = buffer.Orderbook{}
 	err = ku.Setup(exchCfg)
 	if err != nil {
@@ -2032,7 +2032,7 @@ func TestGenerateAuthSubscriptions(t *testing.T) {
 	nu := new(Kucoin)
 	nu.Base.Features = ku.Base.Features
 	assert.NoError(t, nu.CurrencyPairs.Load(&ku.CurrencyPairs), "Loading Pairs should not error")
-	nu.Websocket = sharedtestvalues.NewTestWebsocket()
+	nu.Websocket = sharedtestvalues.NewTestWrapperWebsocket()
 	nu.Websocket.SetCanUseAuthenticatedEndpoints(true)
 
 	subs, err := nu.GenerateDefaultSubscriptions()
@@ -2063,7 +2063,7 @@ func TestGenerateCandleSubscription(t *testing.T) {
 	// Create a parallel safe Kucoin to mess with
 	nu := new(Kucoin)
 	nu.Base.Features = ku.Base.Features
-	nu.Websocket = sharedtestvalues.NewTestWebsocket()
+	nu.Websocket = sharedtestvalues.NewTestWrapperWebsocket()
 	assert.NoError(t, nu.CurrencyPairs.Load(&ku.CurrencyPairs), "Loading Pairs should not error")
 
 	nu.Features.Subscriptions = []*subscription.Subscription{
@@ -2088,7 +2088,7 @@ func TestGenerateMarketSubscription(t *testing.T) {
 	// Create a parallel safe Kucoin to mess with
 	nu := new(Kucoin)
 	nu.Base.Features = ku.Base.Features
-	nu.Websocket = sharedtestvalues.NewTestWebsocket()
+	nu.Websocket = sharedtestvalues.NewTestWrapperWebsocket()
 	assert.NoError(t, nu.CurrencyPairs.Load(&ku.CurrencyPairs), "Loading Pairs should not error")
 
 	nu.Features.Subscriptions = []*subscription.Subscription{

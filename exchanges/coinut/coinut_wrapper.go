@@ -128,7 +128,7 @@ func (c *COINUT) SetDefaults() {
 	if err != nil {
 		log.Errorln(log.ExchangeSys, err)
 	}
-	c.Websocket = stream.New()
+	c.Websocket = stream.NewWrapper()
 	c.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	c.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	c.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
@@ -154,25 +154,33 @@ func (c *COINUT) Setup(exch *config.Exchange) error {
 		return err
 	}
 
-	err = c.Websocket.Setup(&stream.WebsocketSetup{
-		ExchangeConfig:        exch,
+	err = c.Websocket.Setup(&stream.WebsocketWrapperSetup{
+		ExchangeConfig:         exch,
+		ConnectionMonitorDelay: exch.ConnectionMonitorDelay,
+		OrderbookBufferConfig: buffer.Config{
+			SortBuffer:            true,
+			SortBufferByUpdateIDs: true,
+		},
+		Features: &c.Features.Supports.WebsocketCapabilities,
+	})
+	if err != nil {
+		return err
+	}
+	var spotWebsocket *stream.Websocket
+	spotWebsocket, err = c.Websocket.AddWebsocket(&stream.WebsocketSetup{
 		DefaultURL:            coinutWebsocketURL,
 		RunningURL:            wsRunningURL,
 		Connector:             c.WsConnect,
 		Subscriber:            c.Subscribe,
 		Unsubscriber:          c.Unsubscribe,
 		GenerateSubscriptions: c.GenerateDefaultSubscriptions,
-		Features:              &c.Features.Supports.WebsocketCapabilities,
-		OrderbookBufferConfig: buffer.Config{
-			SortBuffer:            true,
-			SortBufferByUpdateIDs: true,
-		},
+		AssetType:             asset.Spot,
 	})
 	if err != nil {
 		return err
 	}
 
-	return c.Websocket.SetupNewConnection(stream.ConnectionSetup{
+	return spotWebsocket.SetupNewConnection(stream.ConnectionSetup{
 		ResponseCheckTimeout: exch.WebsocketResponseCheckTimeout,
 		ResponseMaxLimit:     exch.WebsocketResponseMaxLimit,
 		RateLimit:            wsRateLimitInMilliseconds,
@@ -311,8 +319,8 @@ func (c *COINUT) UpdateTradablePairs(ctx context.Context, forceUpdate bool) erro
 func (c *COINUT) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (account.Holdings, error) {
 	var info account.Holdings
 	var bal *UserBalance
-	var err error
-	if c.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err == nil && spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
 		var resp *UserBalance
 		resp, err = c.wsGetAccountBalance()
 		if err != nil {
@@ -611,10 +619,10 @@ func (c *COINUT) SubmitOrder(ctx context.Context, o *order.Submit) (*order.Submi
 		return nil, fmt.Errorf("%s - ClientID must be a number, received: %s",
 			c.Name, o.ClientID)
 	}
-
 	var orderID string
 	status := order.New
-	if c.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err == nil && spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
 		var response *order.Detail
 		response, err = c.wsSubmitOrder(&WsSubmitOrderParameters{
 			Currency: o.Pair,
@@ -700,11 +708,12 @@ func (c *COINUT) ModifyOrder(_ context.Context, _ *order.Modify) (*order.ModifyR
 
 // CancelOrder cancels an order by its corresponding ID number
 func (c *COINUT) CancelOrder(ctx context.Context, o *order.Cancel) error {
-	if err := o.Validate(o.StandardCancel()); err != nil {
+	err := o.Validate(o.StandardCancel())
+	if err != nil {
 		return err
 	}
 
-	err := c.loadInstrumentsIfNotLoaded()
+	err = c.loadInstrumentsIfNotLoaded()
 	if err != nil {
 		return err
 	}
@@ -719,8 +728,9 @@ func (c *COINUT) CancelOrder(ctx context.Context, o *order.Cancel) error {
 	}
 
 	currencyID := c.instrumentMap.LookupID(fPair.String())
-
-	if c.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
+	var spotWebsocket *stream.Websocket
+	spotWebsocket, err = c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err == nil && spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
 		var resp *CancelOrdersResponse
 		resp, err = c.wsCancelOrder(&WsCancelOrderParameters{
 			Currency: o.Pair,
@@ -797,7 +807,9 @@ func (c *COINUT) CancelAllOrders(ctx context.Context, details *order.Cancel) (or
 		return cancelAllOrdersResponse, err
 	}
 	cancelAllOrdersResponse.Status = make(map[string]string)
-	if c.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
+	var spotWebsocket *stream.Websocket
+	spotWebsocket, err = c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err == nil && spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
 		openOrders, err := c.wsGetOpenOrders(details.Pair.String())
 		if err != nil {
 			return cancelAllOrdersResponse, err
@@ -935,7 +947,8 @@ func (c *COINUT) GetActiveOrders(ctx context.Context, req *order.MultiOrderReque
 			currenciesToCheck = append(currenciesToCheck, k)
 		}
 	}
-	if c.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err == nil && spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
 		for x := range currenciesToCheck {
 			var openOrders *WsUserOpenOrdersResponse
 			openOrders, err = c.wsGetOpenOrders(currenciesToCheck[x])
@@ -1050,7 +1063,9 @@ func (c *COINUT) GetOrderHistory(ctx context.Context, req *order.MultiOrderReque
 		return nil, err
 	}
 	var allOrders []order.Detail
-	if c.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
+	var spotWebsocket *stream.Websocket
+	spotWebsocket, err = c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err == nil && spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
 		for i := range req.Pairs {
 			for j := int64(0); ; j += 100 {
 				var trades *WsTradeHistoryResponse

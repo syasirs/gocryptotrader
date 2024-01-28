@@ -69,8 +69,11 @@ func (b *Binance) WsConnect() error {
 			}
 		}
 	}
-
-	err = b.Websocket.Conn.Dial(&dialer, http.Header{})
+	spotWebsocket, err := b.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
+	err = spotWebsocket.Conn.Dial(&dialer, http.Header{})
 	if err != nil {
 		return fmt.Errorf("%v - Unable to connect to Websocket. Error: %s",
 			b.Name,
@@ -81,15 +84,13 @@ func (b *Binance) WsConnect() error {
 		go b.KeepAuthKeyAlive()
 	}
 
-	b.Websocket.Conn.SetupPingHandler(stream.PingHandler{
+	spotWebsocket.Conn.SetupPingHandler(stream.PingHandler{
 		UseGorillaHandler: true,
 		MessageType:       websocket.PongMessage,
 		Delay:             pingDelay,
 	})
 
-	b.Websocket.Wg.Add(1)
 	go b.wsReadData()
-
 	b.setupOrderbookManager()
 	return nil
 }
@@ -122,12 +123,17 @@ func (b *Binance) setupOrderbookManager() {
 // KeepAuthKeyAlive will continuously send messages to
 // keep the WS auth key active
 func (b *Binance) KeepAuthKeyAlive() {
-	b.Websocket.Wg.Add(1)
-	defer b.Websocket.Wg.Done()
+	spotWebsocket, err := b.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		log.Errorf(log.ExchangeSys, "%v asset type: %v", err, asset.Spot)
+		return
+	}
+	spotWebsocket.Wg.Add(1)
+	defer spotWebsocket.Wg.Done()
 	ticks := time.NewTicker(time.Minute * 30)
 	for {
 		select {
-		case <-b.Websocket.ShutdownC:
+		case <-spotWebsocket.ShutdownC:
 			ticks.Stop()
 			return
 		case <-ticks.C:
@@ -143,10 +149,16 @@ func (b *Binance) KeepAuthKeyAlive() {
 
 // wsReadData receives and passes on websocket messages for processing
 func (b *Binance) wsReadData() {
-	defer b.Websocket.Wg.Done()
+	spotWebsocket, err := b.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		log.Errorf(log.ExchangeSys, "%v asset type: %v", err, asset.Spot)
+		return
+	}
+	spotWebsocket.Wg.Add(1)
+	defer spotWebsocket.Wg.Done()
 
 	for {
-		resp := b.Websocket.Conn.ReadMessage()
+		resp := spotWebsocket.Conn.ReadMessage()
 		if resp.Raw == nil {
 			return
 		}
@@ -605,10 +617,14 @@ func (b *Binance) Subscribe(channelsToSubscribe []subscription.Subscription) err
 	payload := WsPayload{
 		Method: "SUBSCRIBE",
 	}
+	spotWebsocket, err := b.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	for i := range channelsToSubscribe {
 		payload.Params = append(payload.Params, channelsToSubscribe[i].Channel)
 		if i%50 == 0 && i != 0 {
-			err := b.Websocket.Conn.SendJSONMessage(payload)
+			err := spotWebsocket.Conn.SendJSONMessage(payload)
 			if err != nil {
 				return err
 			}
@@ -616,12 +632,12 @@ func (b *Binance) Subscribe(channelsToSubscribe []subscription.Subscription) err
 		}
 	}
 	if len(payload.Params) > 0 {
-		err := b.Websocket.Conn.SendJSONMessage(payload)
+		err := spotWebsocket.Conn.SendJSONMessage(payload)
 		if err != nil {
 			return err
 		}
 	}
-	b.Websocket.AddSuccessfulSubscriptions(channelsToSubscribe...)
+	spotWebsocket.AddSuccessfulSubscriptions(channelsToSubscribe...)
 	return nil
 }
 
@@ -630,10 +646,14 @@ func (b *Binance) Unsubscribe(channelsToUnsubscribe []subscription.Subscription)
 	payload := WsPayload{
 		Method: "UNSUBSCRIBE",
 	}
+	spotWebsocket, err := b.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	for i := range channelsToUnsubscribe {
 		payload.Params = append(payload.Params, channelsToUnsubscribe[i].Channel)
 		if i%50 == 0 && i != 0 {
-			err := b.Websocket.Conn.SendJSONMessage(payload)
+			err := spotWebsocket.Conn.SendJSONMessage(payload)
 			if err != nil {
 				return err
 			}
@@ -641,12 +661,12 @@ func (b *Binance) Unsubscribe(channelsToUnsubscribe []subscription.Subscription)
 		}
 	}
 	if len(payload.Params) > 0 {
-		err := b.Websocket.Conn.SendJSONMessage(payload)
+		err := spotWebsocket.Conn.SendJSONMessage(payload)
 		if err != nil {
 			return err
 		}
 	}
-	b.Websocket.RemoveSubscriptions(channelsToUnsubscribe...)
+	spotWebsocket.RemoveSubscriptions(channelsToUnsubscribe...)
 	return nil
 }
 
@@ -765,12 +785,17 @@ func (o *orderbookManager) setNeedsFetchingBook(pair currency.Pair) error {
 // SynchroniseWebsocketOrderbook synchronises full orderbook for currency pair
 // asset
 func (b *Binance) SynchroniseWebsocketOrderbook() {
-	b.Websocket.Wg.Add(1)
+	spotWebsocket, err := b.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		log.Errorf(log.ExchangeSys, "%v asset type: %v", err, asset.Spot)
+		return
+	}
+	spotWebsocket.Wg.Add(1)
 	go func() {
-		defer b.Websocket.Wg.Done()
+		defer spotWebsocket.Wg.Done()
 		for {
 			select {
-			case <-b.Websocket.ShutdownC:
+			case <-spotWebsocket.ShutdownC:
 				for {
 					select {
 					case <-b.obm.jobs:

@@ -196,7 +196,7 @@ func (ku *Kucoin) SetDefaults() {
 	if err != nil {
 		log.Errorln(log.ExchangeSys, err)
 	}
-	ku.Websocket = stream.New()
+	ku.Websocket = stream.NewWrapper()
 	ku.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	ku.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	ku.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
@@ -222,15 +222,9 @@ func (ku *Kucoin) Setup(exch *config.Exchange) error {
 		return err
 	}
 	err = ku.Websocket.Setup(
-		&stream.WebsocketSetup{
-			ExchangeConfig:        exch,
-			DefaultURL:            kucoinWebsocketURL,
-			RunningURL:            wsRunningEndpoint,
-			Connector:             ku.WsConnect,
-			Subscriber:            ku.Subscribe,
-			Unsubscriber:          ku.Unsubscribe,
-			GenerateSubscriptions: ku.GenerateDefaultSubscriptions,
-			Features:              &ku.Features.Supports.WebsocketCapabilities,
+		&stream.WebsocketWrapperSetup{
+			ExchangeConfig: exch,
+			Features:       &ku.Features.Supports.WebsocketCapabilities,
 			OrderbookBufferConfig: buffer.Config{
 				SortBuffer:            true,
 				SortBufferByUpdateIDs: true,
@@ -241,7 +235,19 @@ func (ku *Kucoin) Setup(exch *config.Exchange) error {
 	if err != nil {
 		return err
 	}
-	return ku.Websocket.SetupNewConnection(stream.ConnectionSetup{
+	spotWebsocket, err := ku.Websocket.AddWebsocket(&stream.WebsocketSetup{
+		DefaultURL:            kucoinWebsocketURL,
+		RunningURL:            wsRunningEndpoint,
+		Connector:             ku.WsConnect,
+		Subscriber:            ku.Subscribe,
+		Unsubscriber:          ku.Unsubscribe,
+		GenerateSubscriptions: ku.GenerateDefaultSubscriptions,
+		AssetType:             asset.Spot,
+	})
+	if err != nil {
+		return err
+	}
+	return spotWebsocket.SetupNewConnection(stream.ConnectionSetup{
 		ResponseCheckTimeout: exch.WebsocketResponseCheckTimeout,
 		ResponseMaxLimit:     exch.WebsocketResponseMaxLimit,
 		RateLimit:            500,

@@ -13,6 +13,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
+	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
 const (
@@ -31,19 +32,21 @@ func (b *Bithumb) WsConnect() error {
 	if !b.Websocket.IsEnabled() || !b.IsEnabled() {
 		return errors.New(stream.WebsocketNotEnabled)
 	}
-
+	spotWebsocket, err := b.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return err
+	}
 	var dialer websocket.Dialer
 	dialer.HandshakeTimeout = b.Config.HTTPTimeout
 	dialer.Proxy = http.ProxyFromEnvironment
 
-	err := b.Websocket.Conn.Dial(&dialer, http.Header{})
+	err = spotWebsocket.Conn.Dial(&dialer, http.Header{})
 	if err != nil {
 		return fmt.Errorf("%v - Unable to connect to Websocket. Error: %w",
 			b.Name,
 			err)
 	}
 
-	b.Websocket.Wg.Add(1)
 	go b.wsReadData()
 
 	b.setupOrderbookManager()
@@ -52,14 +55,19 @@ func (b *Bithumb) WsConnect() error {
 
 // wsReadData receives and passes on websocket messages for processing
 func (b *Bithumb) wsReadData() {
-	defer b.Websocket.Wg.Done()
-
+	spotWebsocket, err := b.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		log.Errorf(log.ExchangeSys, "%v asset type: %v", err, asset.Spot)
+		return
+	}
+	spotWebsocket.Wg.Add(1)
+	defer spotWebsocket.Wg.Done()
 	for {
 		select {
-		case <-b.Websocket.ShutdownC:
+		case <-spotWebsocket.ShutdownC:
 			return
 		default:
-			resp := b.Websocket.Conn.ReadMessage()
+			resp := spotWebsocket.Conn.ReadMessage()
 			if resp.Raw == nil {
 				return
 			}
@@ -195,6 +203,10 @@ func (b *Bithumb) GenerateSubscriptions() ([]subscription.Subscription, error) {
 
 // Subscribe subscribes to a set of channels
 func (b *Bithumb) Subscribe(channelsToSubscribe []subscription.Subscription) error {
+	spotWebsocket, err := b.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return err
+	}
 	subs := make(map[string]*WsSubscribe)
 	for i := range channelsToSubscribe {
 		s, ok := subs[channelsToSubscribe[i].Channel]
@@ -213,11 +225,11 @@ func (b *Bithumb) Subscribe(channelsToSubscribe []subscription.Subscription) err
 	}
 
 	for _, s := range subs {
-		err := b.Websocket.Conn.SendJSONMessage(s)
+		err := spotWebsocket.Conn.SendJSONMessage(s)
 		if err != nil {
 			return err
 		}
 	}
-	b.Websocket.AddSuccessfulSubscriptions(channelsToSubscribe...)
+	spotWebsocket.AddSuccessfulSubscriptions(channelsToSubscribe...)
 	return nil
 }

@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 	binanceConfig.API.Credentials.Key = apiKey
 	binanceConfig.API.Credentials.Secret = apiSecret
 	b.SetDefaults()
-	b.Websocket = sharedtestvalues.NewTestWebsocket()
+	b.Websocket = sharedtestvalues.NewTestWrapperWebsocket()
 	err = b.Setup(binanceConfig)
 	if err != nil {
 		log.Fatal("Binance setup error", err)

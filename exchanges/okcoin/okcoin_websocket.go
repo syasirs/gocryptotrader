@@ -79,7 +79,11 @@ func (o *Okcoin) WsConnect() error {
 	var dialer websocket.Dialer
 	dialer.ReadBufferSize = 8192
 	dialer.WriteBufferSize = 8192
-	err := o.Websocket.Conn.Dial(&dialer, http.Header{})
+	spotWebsocket, err := o.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
+	err = spotWebsocket.Conn.Dial(&dialer, http.Header{})
 	if err != nil {
 		return err
 	}
@@ -87,14 +91,14 @@ func (o *Okcoin) WsConnect() error {
 		log.Debugf(log.ExchangeSys, "Successful connection to %v\n",
 			o.Websocket.GetWebsocketURL())
 	}
-	o.Websocket.Conn.SetupPingHandler(stream.PingHandler{
+	spotWebsocket.Conn.SetupPingHandler(stream.PingHandler{
 		Delay:       time.Second * 25,
 		Message:     []byte("ping"),
 		MessageType: websocket.TextMessage,
 	})
 
 	o.Websocket.Wg.Add(1)
-	go o.WsReadData(o.Websocket.Conn)
+	go o.WsReadData(spotWebsocket.Conn)
 
 	if o.IsWebsocketAuthenticationSupported() {
 		err = o.WsLogin(context.TODO(), &dialer)
@@ -115,13 +119,17 @@ func (o *Okcoin) WsLogin(ctx context.Context, dialer *websocket.Dialer) error {
 	if err != nil {
 		return err
 	}
-	err = o.Websocket.AuthConn.Dial(dialer, http.Header{})
+	spotWebsocket, err := o.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
+	err = spotWebsocket.AuthConn.Dial(dialer, http.Header{})
 	if err != nil {
 		return err
 	}
 	o.Websocket.Wg.Add(1)
-	go o.WsReadData(o.Websocket.AuthConn)
-	o.Websocket.AuthConn.SetupPingHandler(stream.PingHandler{
+	go o.WsReadData(spotWebsocket.AuthConn)
+	spotWebsocket.AuthConn.SetupPingHandler(stream.PingHandler{
 		Delay:       time.Second * 25,
 		Message:     []byte("ping"),
 		MessageType: websocket.TextMessage,
@@ -147,7 +155,7 @@ func (o *Okcoin) WsLogin(ctx context.Context, dialer *websocket.Dialer) error {
 			},
 		},
 	}
-	_, err = o.Websocket.AuthConn.SendMessageReturnResponse("login", authRequest)
+	_, err = spotWebsocket.AuthConn.SendMessageReturnResponse("login", authRequest)
 	if err != nil {
 		return err
 	}
@@ -865,6 +873,10 @@ func (o *Okcoin) handleSubscriptions(operation string, subs []subscription.Subsc
 	var err error
 	var channels []subscription.Subscription
 	var authChannels []subscription.Subscription
+	spotWebsocket, err := o.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	for i := 0; i < len(subs); i++ {
 		authenticatedChannelSubscription := isAuthenticatedChannel(subs[i].Channel)
 		// Temp type to evaluate max byte len after a marshal on batched unsubs
@@ -918,9 +930,9 @@ func (o *Okcoin) handleSubscriptions(operation string, subs []subscription.Subsc
 			i-- // reverse position in range to reuse channel unsubscription on
 			// next iteration
 			if authenticatedChannelSubscription {
-				err = o.Websocket.AuthConn.SendJSONMessage(authRequest)
+				err = spotWebsocket.AuthConn.SendJSONMessage(authRequest)
 			} else {
-				err = o.Websocket.Conn.SendJSONMessage(subscriptionRequest)
+				err = spotWebsocket.Conn.SendJSONMessage(subscriptionRequest)
 			}
 			if err != nil {
 				return err
@@ -928,15 +940,15 @@ func (o *Okcoin) handleSubscriptions(operation string, subs []subscription.Subsc
 
 			if operation == "unsubscribe" {
 				if authenticatedChannelSubscription {
-					o.Websocket.RemoveSubscriptions(authChannels...)
+					spotWebsocket.RemoveSubscriptions(authChannels...)
 				} else {
-					o.Websocket.RemoveSubscriptions(channels...)
+					spotWebsocket.RemoveSubscriptions(channels...)
 				}
 			} else {
 				if authenticatedChannelSubscription {
-					o.Websocket.AddSuccessfulSubscriptions(authChannels...)
+					spotWebsocket.AddSuccessfulSubscriptions(authChannels...)
 				} else {
-					o.Websocket.AddSuccessfulSubscriptions(channels...)
+					spotWebsocket.AddSuccessfulSubscriptions(channels...)
 				}
 			}
 			// Drop prior unsubs and chunked payload args on successful unsubscription
@@ -958,21 +970,21 @@ func (o *Okcoin) handleSubscriptions(operation string, subs []subscription.Subsc
 		}
 	}
 	if len(subscriptionRequest.Arguments) > 0 {
-		err = o.Websocket.Conn.SendJSONMessage(subscriptionRequest)
+		err = spotWebsocket.Conn.SendJSONMessage(subscriptionRequest)
 		if err != nil {
 			return err
 		}
 	}
 	if len(authRequest.Arguments) > 0 {
-		err = o.Websocket.AuthConn.SendJSONMessage(authRequest)
+		err = spotWebsocket.AuthConn.SendJSONMessage(authRequest)
 		if err != nil {
 			return err
 		}
 	}
 	if operation == "unsubscribe" {
-		o.Websocket.RemoveSubscriptions(channels...)
+		spotWebsocket.RemoveSubscriptions(channels...)
 	} else {
-		o.Websocket.AddSuccessfulSubscriptions(channels...)
+		spotWebsocket.AddSuccessfulSubscriptions(channels...)
 	}
 	return nil
 }

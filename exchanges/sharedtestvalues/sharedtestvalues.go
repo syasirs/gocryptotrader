@@ -68,6 +68,21 @@ func NewTestWebsocket() *stream.Websocket {
 	}
 }
 
+// NewTestWrapperWebsocket returns a test websocket object
+func NewTestWrapperWebsocket() *stream.WrapperWebsocket {
+	return &stream.WrapperWebsocket{
+		Init:                true,
+		DataHandler:         make(chan interface{}, 100),
+		ToRoutine:           make(chan interface{}, 100),
+		TrafficAlert:        make(chan struct{}),
+		ReadMessageErrors:   make(chan error),
+		AssetTypeWebsockets: make(map[asset.Item]*stream.Websocket),
+		ShutdownC:           make(chan asset.Item, 10),
+		Match:               stream.NewMatch(),
+		Wg:                  &sync.WaitGroup{},
+	}
+}
+
 // SkipTestIfCredentialsUnset is a test helper function checking if the
 // authenticated function can perform the required test.
 func SkipTestIfCredentialsUnset(t *testing.T, exch exchange.IBotExchange, canManipulateOrders ...bool) {
@@ -166,7 +181,7 @@ func TestFixtureToDataHandler(t *testing.T, seed, e exchange.IBotExchange, fixtu
 	assert.NoError(t, err, "Loading currency pairs should not error")
 
 	b.Name = "fixture"
-	b.Websocket = &stream.Websocket{
+	b.Websocket = &stream.WrapperWebsocket{
 		Wg:          new(sync.WaitGroup),
 		DataHandler: make(chan interface{}, 128),
 	}

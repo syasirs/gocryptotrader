@@ -210,7 +210,7 @@ func (k *Kraken) SetDefaults() {
 	if err != nil {
 		log.Errorln(log.ExchangeSys, err)
 	}
-	k.Websocket = stream.New()
+	k.Websocket = stream.NewWrapper()
 	k.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	k.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
 	k.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
@@ -240,22 +240,30 @@ func (k *Kraken) Setup(exch *config.Exchange) error {
 	if err != nil {
 		return err
 	}
-	err = k.Websocket.Setup(&stream.WebsocketSetup{
-		ExchangeConfig:        exch,
+	err = k.Websocket.Setup(&stream.WebsocketWrapperSetup{
+		ExchangeConfig:         exch,
+		ConnectionMonitorDelay: exch.ConnectionMonitorDelay,
+		OrderbookBufferConfig:  buffer.Config{SortBuffer: true},
+		Features:               &k.Features.Supports.WebsocketCapabilities,
+	})
+	if err != nil {
+		return err
+	}
+
+	spotWebsocket, err := k.Websocket.AddWebsocket(&stream.WebsocketSetup{
 		DefaultURL:            krakenWSURL,
 		RunningURL:            wsRunningURL,
 		Connector:             k.WsConnect,
 		Subscriber:            k.Subscribe,
 		Unsubscriber:          k.Unsubscribe,
 		GenerateSubscriptions: k.GenerateDefaultSubscriptions,
-		Features:              &k.Features.Supports.WebsocketCapabilities,
-		OrderbookBufferConfig: buffer.Config{SortBuffer: true},
+		AssetType:             asset.Spot,
 	})
 	if err != nil {
 		return err
 	}
 
-	err = k.Websocket.SetupNewConnection(stream.ConnectionSetup{
+	err = spotWebsocket.SetupNewConnection(stream.ConnectionSetup{
 		RateLimit:            krakenWsRateLimit,
 		ResponseCheckTimeout: exch.WebsocketResponseCheckTimeout,
 		ResponseMaxLimit:     exch.WebsocketResponseMaxLimit,
@@ -265,7 +273,7 @@ func (k *Kraken) Setup(exch *config.Exchange) error {
 		return err
 	}
 
-	return k.Websocket.SetupNewConnection(stream.ConnectionSetup{
+	return spotWebsocket.SetupNewConnection(stream.ConnectionSetup{
 		RateLimit:            krakenWsRateLimit,
 		ResponseCheckTimeout: exch.WebsocketResponseCheckTimeout,
 		ResponseMaxLimit:     exch.WebsocketResponseMaxLimit,
@@ -843,7 +851,9 @@ func (k *Kraken) SubmitOrder(ctx context.Context, s *order.Submit) (*order.Submi
 		if s.ImmediateOrCancel {
 			timeInForce = RequestParamsTimeIOC
 		}
-		if k.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
+		var spotWebsocket *stream.Websocket
+		spotWebsocket, err = k.Websocket.GetAssetWebsocket(asset.Spot)
+		if err == nil && spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
 			orderID, err = k.wsAddOrder(&WsAddOrderRequest{
 				OrderType:   s.Type.Lower(),
 				OrderSide:   s.Side.Lower(),
@@ -925,10 +935,11 @@ func (k *Kraken) CancelOrder(ctx context.Context, o *order.Cancel) error {
 	}
 	switch o.AssetType {
 	case asset.Spot:
-		if k.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
+		spotWebsocket, err := k.Websocket.GetAssetWebsocket(asset.Spot)
+		if err == nil && spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
 			return k.wsCancelOrders([]string{o.OrderID})
 		}
-		_, err := k.CancelExistingOrder(ctx, o.OrderID)
+		_, err = k.CancelExistingOrder(ctx, o.OrderID)
 		return err
 	case asset.Futures:
 		_, err := k.FuturesCancelOrder(ctx, o.OrderID, "")
@@ -943,20 +954,25 @@ func (k *Kraken) CancelOrder(ctx context.Context, o *order.Cancel) error {
 }
 
 // CancelBatchOrders cancels an orders by their corresponding ID numbers
-func (k *Kraken) CancelBatchOrders(_ context.Context, o []order.Cancel) (*order.CancelBatchResponse, error) {
-	if !k.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
+func (k *Kraken) CancelBatchOrders(_ context.Context, orders []order.Cancel) (*order.CancelBatchResponse, error) {
+	spotWebsocket, err := k.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return nil, fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
+	if !spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
 		return nil, common.ErrFunctionNotSupported
 	}
 
-	ordersList := make([]string, len(o))
-	for i := range o {
-		if err := o[i].Validate(o[i].StandardCancel()); err != nil {
+	ordersList := make([]string, len(orders))
+	for i := range orders {
+		err = orders[i].Validate(orders[i].StandardCancel())
+		if err != nil {
 			return nil, err
 		}
-		ordersList[i] = o[i].OrderID
+		ordersList[i] = orders[i].OrderID
 	}
 
-	err := k.wsCancelOrders(ordersList)
+	err = k.wsCancelOrders(ordersList)
 	return nil, err
 }
 
@@ -968,9 +984,10 @@ func (k *Kraken) CancelAllOrders(ctx context.Context, req *order.Cancel) (order.
 	cancelAllOrdersResponse := order.CancelAllResponse{
 		Status: make(map[string]string),
 	}
+	spotWebsocket, err := k.Websocket.GetAssetWebsocket(asset.Spot)
 	switch req.AssetType {
 	case asset.Spot:
-		if k.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
+		if err == nil && spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
 			resp, err := k.wsCancelAllOrders()
 			if err != nil {
 				return cancelAllOrdersResponse, err
@@ -987,7 +1004,7 @@ func (k *Kraken) CancelAllOrders(ctx context.Context, req *order.Cancel) (order.
 		}
 		for orderID := range openOrders.Open {
 			var err error
-			if k.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
+			if err == nil && spotWebsocket.CanUseAuthenticatedWebsocketForWrapper() {
 				err = k.wsCancelOrders([]string{orderID})
 			} else {
 				_, err = k.CancelExistingOrder(ctx, orderID)

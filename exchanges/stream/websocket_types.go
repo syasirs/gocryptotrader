@@ -6,6 +6,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/thrasher-corp/gocryptotrader/config"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/fill"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/protocol"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/stream/buffer"
@@ -36,7 +37,6 @@ type Websocket struct {
 	verbose                      bool
 	connectionMonitorRunning     bool
 	trafficMonitorRunning        bool
-	dataMonitorRunning           bool
 	trafficTimeout               time.Duration
 	connectionMonitorDelay       time.Duration
 	proxyAddr                    string
@@ -53,6 +53,7 @@ type Websocket struct {
 	subscriptions     subscriptionMap
 	Subscribe         chan []subscription.Subscription
 	Unsubscribe       chan []subscription.Subscription
+	AssetType         asset.Item
 
 	// Subscriber function for package defined websocket subscriber
 	// functionality
@@ -64,24 +65,26 @@ type Websocket struct {
 	// subscriptions functionality
 	GenerateSubs func() ([]subscription.Subscription, error)
 
+	// SubscriptionFilter filters a channel subscription by its associated asset type
+	SubscriptionFilter func([]subscription.Subscription, asset.Item) ([]subscription.Subscription, error)
+
 	DataHandler chan interface{}
 	ToRoutine   chan interface{}
 
 	Match *Match
 
-	// shutdown synchronises shutdown event across routines
-	ShutdownC chan struct{}
-	Wg        *sync.WaitGroup
+	// ShutdownC synchronises shutdown event across routines
+	ShutdownC      chan struct{}
+	AssetShutdownC chan asset.Item
+	Wg             *sync.WaitGroup
 
 	// Orderbook is a local buffer of orderbooks
 	Orderbook buffer.Orderbook
-
 	// Trade is a notifier of occurring trades
 	Trade trade.Trade
 
 	// Fills is a notifier of occurring fills
 	Fills fill.Fills
-
 	// trafficAlert monitors if there is a halt in traffic throughput
 	TrafficAlert chan struct{}
 	// ReadMessageErrors will received all errors from ws.ReadMessage() and
@@ -104,16 +107,22 @@ type Websocket struct {
 
 // WebsocketSetup defines variables for setting up a websocket connection
 type WebsocketSetup struct {
-	ExchangeConfig        *config.Exchange
-	DefaultURL            string
-	RunningURL            string
-	RunningURLAuth        string
-	Connector             func() error
-	Subscriber            func([]subscription.Subscription) error
-	Unsubscriber          func([]subscription.Subscription) error
-	GenerateSubscriptions func() ([]subscription.Subscription, error)
-	Features              *protocol.Features
+	DefaultURL                   string
+	RunningURL                   string
+	RunningURLAuth               string
+	Connector                    func() error
+	Subscriber                   func([]subscription.Subscription) error
+	Unsubscriber                 func([]subscription.Subscription) error
+	GenerateSubscriptions        func() ([]subscription.Subscription, error)
+	AssetType                    asset.Item
+	CanUseAuthenticatedEndpoints bool
+}
 
+// WebsocketWrapperSetup defines variables for setting up the websocket wrapper instance
+type WebsocketWrapperSetup struct {
+	ExchangeConfig         *config.Exchange
+	Features               *protocol.Features
+	ConnectionMonitorDelay time.Duration
 	// Local orderbook buffer config values
 	OrderbookBufferConfig buffer.Config
 

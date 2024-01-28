@@ -198,7 +198,7 @@ func TestSetClientProxyAddress(t *testing.T) {
 		Name:      "rawr",
 		Requester: requester}
 
-	newBase.Websocket = stream.New()
+	newBase.Websocket = stream.NewWrapper()
 	err = newBase.SetClientProxyAddress("")
 	if err != nil {
 		t.Error(err)
@@ -1251,27 +1251,28 @@ func TestSetupDefaults(t *testing.T) {
 	}
 
 	// Test websocket support
-	b.Websocket = stream.New()
+	b.Websocket = stream.NewWrapper()
 	b.Features.Supports.Websocket = true
-	err = b.Websocket.Setup(&stream.WebsocketSetup{
-		ExchangeConfig: &config.Exchange{
-			WebsocketTrafficTimeout: time.Second * 30,
-			Name:                    "test",
-			Features:                &config.FeaturesConfig{},
-		},
-		Features:              &protocol.Features{},
-		DefaultURL:            "ws://something.com",
-		RunningURL:            "ws://something.com",
-		Connector:             func() error { return nil },
-		GenerateSubscriptions: func() ([]subscription.Subscription, error) { return []subscription.Subscription{}, nil },
-		Subscriber:            func(cs []subscription.Subscription) error { return nil },
-	})
+	err = b.Websocket.Enable()
+	if !errors.Is(err, stream.ErrNoAssetWebsocketInstanceFound) {
+		t.Fatalf("expected %v, but found %v", stream.ErrNoAssetWebsocketInstanceFound, err)
+	}
+	err = b.Websocket.Setup(stream.DefaultWrapperSetup)
 	if err != nil {
 		t.Fatal(err)
 	}
+	err = b.Websocket.Disable()
+	if err != nil {
+		t.Error(err)
+	}
+
+	_, err = b.Websocket.AddWebsocket(stream.DefaultTestSetup)
+	if err != nil {
+		t.Error(err)
+	}
 	err = b.Websocket.Enable()
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 	if !b.IsWebsocketEnabled() {
 		t.Error("websocket should be enabled")
@@ -1595,26 +1596,12 @@ func TestIsWebsocketEnabled(t *testing.T) {
 	if b.IsWebsocketEnabled() {
 		t.Error("exchange doesn't support websocket")
 	}
-
-	b.Websocket = stream.New()
-	err := b.Websocket.Setup(&stream.WebsocketSetup{
-		ExchangeConfig: &config.Exchange{
-			Enabled:                 true,
-			WebsocketTrafficTimeout: time.Second * 30,
-			Name:                    "test",
-			Features: &config.FeaturesConfig{
-				Enabled: config.FeaturesEnabledConfig{
-					Websocket: true,
-				},
-			},
-		},
-		Features:              &protocol.Features{},
-		DefaultURL:            "ws://something.com",
-		RunningURL:            "ws://something.com",
-		Connector:             func() error { return nil },
-		GenerateSubscriptions: func() ([]subscription.Subscription, error) { return nil, nil },
-		Subscriber:            func(cs []subscription.Subscription) error { return nil },
-	})
+	b.Websocket = stream.NewWrapper()
+	err := b.Websocket.Setup(stream.DefaultWrapperSetup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = b.Websocket.AddWebsocket(stream.DefaultTestSetup)
 	if err != nil {
 		t.Error(err)
 	}
@@ -2036,7 +2023,7 @@ func TestGetWebsocket(t *testing.T) {
 	if err == nil {
 		t.Fatal("error cannot be nil")
 	}
-	b.Websocket = &stream.Websocket{}
+	b.Websocket = &stream.WrapperWebsocket{}
 	_, err = b.GetWebsocket()
 	if err != nil {
 		t.Fatal(err)
@@ -2050,7 +2037,7 @@ func TestFlushWebsocketChannels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	b.Websocket = &stream.Websocket{}
+	b.Websocket = &stream.WrapperWebsocket{}
 	err = b.FlushWebsocketChannels()
 	if err == nil {
 		t.Fatal(err)
@@ -2064,7 +2051,7 @@ func TestSubscribeToWebsocketChannels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	b.Websocket = &stream.Websocket{}
+	b.Websocket = &stream.WrapperWebsocket{}
 	err = b.SubscribeToWebsocketChannels(nil)
 	if err == nil {
 		t.Fatal(err)
@@ -2078,7 +2065,7 @@ func TestUnsubscribeToWebsocketChannels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	b.Websocket = &stream.Websocket{}
+	b.Websocket = &stream.WrapperWebsocket{}
 	err = b.UnsubscribeToWebsocketChannels(nil)
 	if err == nil {
 		t.Fatal(err)
@@ -2092,7 +2079,7 @@ func TestGetSubscriptions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	b.Websocket = &stream.Websocket{}
+	b.Websocket = &stream.WrapperWebsocket{}
 	_, err = b.GetSubscriptions()
 	if err != nil {
 		t.Fatal(err)

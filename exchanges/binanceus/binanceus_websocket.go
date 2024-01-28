@@ -55,7 +55,7 @@ func (bi *Binanceus) WsConnect() error {
 		listenKey, err = bi.GetWsAuthStreamKey(context.TODO())
 		if err != nil {
 			bi.Websocket.SetCanUseAuthenticatedEndpoints(false)
-			log.Errorf(log.ExchangeSys,
+			log.Errorf(log.WebsocketMgr,
 				"%v unable to connect to authenticated Websocket. Error: %s",
 				bi.Name,
 				err)
@@ -69,7 +69,11 @@ func (bi *Binanceus) WsConnect() error {
 			}
 		}
 	}
-	err = bi.Websocket.Conn.Dial(&dialer, http.Header{})
+	spotWebsocket, err := bi.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return err
+	}
+	err = spotWebsocket.Conn.Dial(&dialer, http.Header{})
 	if err != nil {
 		return fmt.Errorf("%v - Unable to connect to Websocket. Error: %s",
 			bi.Name,
@@ -77,17 +81,16 @@ func (bi *Binanceus) WsConnect() error {
 	}
 
 	if bi.Websocket.CanUseAuthenticatedEndpoints() {
-		bi.Websocket.Wg.Add(1)
 		go bi.KeepAuthKeyAlive()
 	}
 
-	bi.Websocket.Conn.SetupPingHandler(stream.PingHandler{
+	spotWebsocket.Conn.SetupPingHandler(stream.PingHandler{
 		UseGorillaHandler: true,
 		MessageType:       websocket.PongMessage,
 		Delay:             pingDelay,
 	})
 
-	bi.Websocket.Wg.Add(1)
+	spotWebsocket.Wg.Add(1)
 	go bi.wsReadData()
 
 	bi.setupOrderbookManager()
@@ -97,7 +100,6 @@ func (bi *Binanceus) WsConnect() error {
 // KeepAuthKeyAlive will continuously send messages to
 // keep the WS auth key active
 func (bi *Binanceus) KeepAuthKeyAlive() {
-	defer bi.Websocket.Wg.Done()
 	// ClosUserDataStream closes the User data stream and remove the listen key when closing the websocket.
 	defer func() {
 		er := bi.CloseUserDataStream(context.Background())
@@ -106,18 +108,26 @@ func (bi *Binanceus) KeepAuthKeyAlive() {
 				bi.Name, er)
 		}
 	}()
+
+	spotWebsocket, err := bi.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		log.Errorf(log.WebsocketMgr, "%v asset type: %v", err, asset.Spot)
+		return
+	}
+	spotWebsocket.Wg.Add(1)
+	defer spotWebsocket.Wg.Done()
 	// Looping in 30 Minutes and updating the listenKey
 	ticks := time.NewTicker(time.Minute * 30)
 	for {
 		select {
-		case <-bi.Websocket.ShutdownC:
+		case <-spotWebsocket.ShutdownC:
 			ticks.Stop()
 			return
 		case <-ticks.C:
 			err := bi.MaintainWsAuthStreamKey(context.TODO())
 			if err != nil {
 				bi.Websocket.DataHandler <- err
-				log.Warnf(log.ExchangeSys,
+				log.Warnf(log.WebsocketMgr,
 					bi.Name+" - Unable to renew auth websocket token, may experience shutdown")
 			}
 		}
@@ -126,10 +136,14 @@ func (bi *Binanceus) KeepAuthKeyAlive() {
 
 // wsReadData receives and passes on websocket messages for processing
 func (bi *Binanceus) wsReadData() {
-	defer bi.Websocket.Wg.Done()
-
+	spotWebsocket, err := bi.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		log.Errorf(log.WebsocketMgr, "%v asset type: %v", err, asset.Spot)
+		return
+	}
+	defer spotWebsocket.Wg.Done()
 	for {
-		resp := bi.Websocket.Conn.ReadMessage()
+		resp := spotWebsocket.Conn.ReadMessage()
 		if resp.Raw == nil {
 			return
 		}
@@ -571,13 +585,17 @@ subs:
 
 // Subscribe subscribes to a set of channels
 func (bi *Binanceus) Subscribe(channelsToSubscribe []subscription.Subscription) error {
+	spotWebsocket, err := bi.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	payload := WebsocketPayload{
 		Method: "SUBSCRIBE",
 	}
 	for i := range channelsToSubscribe {
 		payload.Params = append(payload.Params, channelsToSubscribe[i].Channel)
 		if i%50 == 0 && i != 0 {
-			err := bi.Websocket.Conn.SendJSONMessage(payload)
+			err := spotWebsocket.Conn.SendJSONMessage(payload)
 			if err != nil {
 				return err
 			}
@@ -585,24 +603,28 @@ func (bi *Binanceus) Subscribe(channelsToSubscribe []subscription.Subscription) 
 		}
 	}
 	if len(payload.Params) > 0 {
-		err := bi.Websocket.Conn.SendJSONMessage(payload)
+		err := spotWebsocket.Conn.SendJSONMessage(payload)
 		if err != nil {
 			return err
 		}
 	}
-	bi.Websocket.AddSuccessfulSubscriptions(channelsToSubscribe...)
+	spotWebsocket.AddSuccessfulSubscriptions(channelsToSubscribe...)
 	return nil
 }
 
 // Unsubscribe unsubscribes from a set of channels
 func (bi *Binanceus) Unsubscribe(channelsToUnsubscribe []subscription.Subscription) error {
+	spotWebsocket, err := bi.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	payload := WebsocketPayload{
 		Method: "UNSUBSCRIBE",
 	}
 	for i := range channelsToUnsubscribe {
 		payload.Params = append(payload.Params, channelsToUnsubscribe[i].Channel)
 		if i%50 == 0 && i != 0 {
-			err := bi.Websocket.Conn.SendJSONMessage(payload)
+			err := spotWebsocket.Conn.SendJSONMessage(payload)
 			if err != nil {
 				return err
 			}
@@ -610,12 +632,12 @@ func (bi *Binanceus) Unsubscribe(channelsToUnsubscribe []subscription.Subscripti
 		}
 	}
 	if len(payload.Params) > 0 {
-		err := bi.Websocket.Conn.SendJSONMessage(payload)
+		err := spotWebsocket.Conn.SendJSONMessage(payload)
 		if err != nil {
 			return err
 		}
 	}
-	bi.Websocket.RemoveSubscriptions(channelsToUnsubscribe...)
+	spotWebsocket.RemoveSubscriptions(channelsToUnsubscribe...)
 	return nil
 }
 
@@ -645,12 +667,17 @@ func (bi *Binanceus) setupOrderbookManager() {
 
 // SynchroniseWebsocketOrderbook synchronises full orderbook for currency pair asset
 func (bi *Binanceus) SynchroniseWebsocketOrderbook() {
-	bi.Websocket.Wg.Add(1)
+	spotWebsocket, err := bi.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		log.Errorf(log.WebsocketMgr, "%v asset type: %v", err, asset.Spot)
+		return
+	}
+	spotWebsocket.Wg.Add(1)
 	go func() {
-		defer bi.Websocket.Wg.Done()
+		defer spotWebsocket.Wg.Done()
 		for {
 			select {
-			case <-bi.Websocket.ShutdownC:
+			case <-spotWebsocket.ShutdownC:
 				for {
 					select {
 					case <-bi.obm.jobs:

@@ -71,7 +71,7 @@ type IBotExchange interface {
 	DisableRateLimiter() error
 	EnableRateLimiter() error
 	GetServerTime(ctx context.Context, ai asset.Item) (time.Time, error)
-	GetWebsocket() (*stream.Websocket, error)
+	GetWebsocket() (*stream.WrapperWebsocket, error)
 	SubscribeToWebsocketChannels(channels []subscription.Subscription) error
 	UnsubscribeToWebsocketChannels(channels []subscription.Subscription) error
 	GetSubscriptions() ([]subscription.Subscription, error)

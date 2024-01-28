@@ -38,7 +38,7 @@ func TestInstance(e exchange.IBotExchange) error {
 	}
 	e.SetDefaults()
 	b := e.GetBase()
-	b.Websocket = sharedtestvalues.NewTestWebsocket()
+	b.Websocket = sharedtestvalues.NewTestWrapperWebsocket()
 	err = e.Setup(exchConf)
 	if err != nil {
 		return fmt.Errorf("Setup() error: %w", err)

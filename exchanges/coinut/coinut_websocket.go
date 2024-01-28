@@ -44,12 +44,15 @@ func (c *COINUT) WsConnect() error {
 		return errors.New(stream.WebsocketNotEnabled)
 	}
 	var dialer websocket.Dialer
-	err := c.Websocket.Conn.Dial(&dialer, http.Header{})
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return err
+	}
+	err = spotWebsocket.Conn.Dial(&dialer, http.Header{})
 	if err != nil {
 		return err
 	}
 
-	c.Websocket.Wg.Add(1)
 	go c.wsReadData()
 
 	if !c.instrumentMap.IsLoaded() {
@@ -73,10 +76,15 @@ func (c *COINUT) WsConnect() error {
 
 // wsReadData receives and passes on websocket messages for processing
 func (c *COINUT) wsReadData() {
-	defer c.Websocket.Wg.Done()
-
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		log.Errorf(log.ExchangeSys, "%v asset type: %v", err, asset.Spot)
+		return
+	}
+	spotWebsocket.Wg.Add(1)
+	defer spotWebsocket.Wg.Done()
 	for {
-		resp := c.Websocket.Conn.ReadMessage()
+		resp := spotWebsocket.Conn.ReadMessage()
 		if resp.Raw == nil {
 			return
 		}
@@ -493,12 +501,16 @@ func (c *COINUT) parseOrderContainer(oContainer *wsOrderContainer) (*order.Detai
 // WsGetInstruments fetches instrument list and propagates a local cache
 func (c *COINUT) WsGetInstruments() (Instruments, error) {
 	var list Instruments
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return list, fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	request := wsRequest{
 		Request:      "inst_list",
 		SecurityType: strings.ToUpper(asset.Spot.String()),
 		Nonce:        getNonce(),
 	}
-	resp, err := c.Websocket.Conn.SendMessageReturnResponse(request.Nonce, request)
+	resp, err := spotWebsocket.Conn.SendMessageReturnResponse(request.Nonce, request)
 	if err != nil {
 		return list, err
 	}
@@ -619,6 +631,10 @@ func (c *COINUT) GenerateDefaultSubscriptions() ([]subscription.Subscription, er
 
 // Subscribe sends a websocket message to receive data from the channel
 func (c *COINUT) Subscribe(channelsToSubscribe []subscription.Subscription) error {
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	var errs error
 	for i := range channelsToSubscribe {
 		fPair, err := c.FormatExchangeCurrency(channelsToSubscribe[i].Pair, asset.Spot)
@@ -633,12 +649,12 @@ func (c *COINUT) Subscribe(channelsToSubscribe []subscription.Subscription) erro
 			Subscribe:    true,
 			Nonce:        getNonce(),
 		}
-		err = c.Websocket.Conn.SendJSONMessage(subscribe)
+		err = spotWebsocket.Conn.SendJSONMessage(subscribe)
 		if err != nil {
 			errs = common.AppendError(errs, err)
 			continue
 		}
-		c.Websocket.AddSuccessfulSubscriptions(channelsToSubscribe[i])
+		spotWebsocket.AddSuccessfulSubscriptions(channelsToSubscribe[i])
 	}
 	if errs != nil {
 		return errs
@@ -648,6 +664,10 @@ func (c *COINUT) Subscribe(channelsToSubscribe []subscription.Subscription) erro
 
 // Unsubscribe sends a websocket message to stop receiving data from the channel
 func (c *COINUT) Unsubscribe(channelToUnsubscribe []subscription.Subscription) error {
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	var errs error
 	for i := range channelToUnsubscribe {
 		fPair, err := c.FormatExchangeCurrency(channelToUnsubscribe[i].Pair, asset.Spot)
@@ -662,7 +682,7 @@ func (c *COINUT) Unsubscribe(channelToUnsubscribe []subscription.Subscription) e
 			Subscribe:    false,
 			Nonce:        getNonce(),
 		}
-		resp, err := c.Websocket.Conn.SendMessageReturnResponse(subscribe.Nonce,
+		resp, err := spotWebsocket.Conn.SendMessageReturnResponse(subscribe.Nonce,
 			subscribe)
 		if err != nil {
 			errs = common.AppendError(errs, err)
@@ -685,12 +705,16 @@ func (c *COINUT) Unsubscribe(channelToUnsubscribe []subscription.Subscription) e
 				channelToUnsubscribe[i].Channel))
 			continue
 		}
-		c.Websocket.RemoveSubscriptions(channelToUnsubscribe[i])
+		spotWebsocket.RemoveSubscriptions(channelToUnsubscribe[i])
 	}
 	return errs
 }
 
 func (c *COINUT) wsAuthenticate(ctx context.Context) error {
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	creds, err := c.GetCredentials(ctx)
 	if err != nil {
 		return err
@@ -722,7 +746,7 @@ func (c *COINUT) wsAuthenticate(ctx context.Context) error {
 		Timestamp: timestamp,
 	}
 
-	resp, err := c.Websocket.Conn.SendMessageReturnResponse(loginRequest.Nonce,
+	resp, err := spotWebsocket.Conn.SendMessageReturnResponse(loginRequest.Nonce,
 		loginRequest)
 	if err != nil {
 		return err
@@ -736,6 +760,10 @@ func (c *COINUT) wsAuthenticate(ctx context.Context) error {
 }
 
 func (c *COINUT) wsGetAccountBalance() (*UserBalance, error) {
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return nil, fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	if !c.Websocket.CanUseAuthenticatedEndpoints() {
 		return nil, fmt.Errorf("%v not authorised to submit order", c.Name)
 	}
@@ -743,7 +771,7 @@ func (c *COINUT) wsGetAccountBalance() (*UserBalance, error) {
 		Request: "user_balance",
 		Nonce:   getNonce(),
 	}
-	resp, err := c.Websocket.Conn.SendMessageReturnResponse(accBalance.Nonce,
+	resp, err := spotWebsocket.Conn.SendMessageReturnResponse(accBalance.Nonce,
 		accBalance)
 	if err != nil {
 		return nil, err
@@ -760,6 +788,10 @@ func (c *COINUT) wsGetAccountBalance() (*UserBalance, error) {
 }
 
 func (c *COINUT) wsSubmitOrder(o *WsSubmitOrderParameters) (*order.Detail, error) {
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return nil, fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	if !c.Websocket.CanUseAuthenticatedEndpoints() {
 		return nil, fmt.Errorf("%v not authorised to submit order", c.Name)
 	}
@@ -780,7 +812,7 @@ func (c *COINUT) wsSubmitOrder(o *WsSubmitOrderParameters) (*order.Detail, error
 	if o.OrderID > 0 {
 		orderSubmissionRequest.OrderID = o.OrderID
 	}
-	resp, err := c.Websocket.Conn.SendMessageReturnResponse(orderSubmissionRequest.Nonce,
+	resp, err := spotWebsocket.Conn.SendMessageReturnResponse(orderSubmissionRequest.Nonce,
 		orderSubmissionRequest)
 	if err != nil {
 		return nil, err
@@ -800,6 +832,11 @@ func (c *COINUT) wsSubmitOrder(o *WsSubmitOrderParameters) (*order.Detail, error
 
 func (c *COINUT) wsSubmitOrders(orders []WsSubmitOrderParameters) ([]order.Detail, []error) {
 	var errs []error
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("%w asset type: %v", err, asset.Spot))
+		return nil, errs
+	}
 	if !c.Websocket.CanUseAuthenticatedEndpoints() {
 		errs = append(errs, fmt.Errorf("%v not authorised to submit orders",
 			c.Name))
@@ -807,7 +844,8 @@ func (c *COINUT) wsSubmitOrders(orders []WsSubmitOrderParameters) ([]order.Detai
 	}
 	orderRequest := WsSubmitOrdersRequest{}
 	for i := range orders {
-		curr, err := c.FormatExchangeCurrency(orders[i].Currency, asset.Spot)
+		var curr currency.Pair
+		curr, err = c.FormatExchangeCurrency(orders[i].Currency, asset.Spot)
 		if err != nil {
 			return nil, []error{err}
 		}
@@ -824,7 +862,7 @@ func (c *COINUT) wsSubmitOrders(orders []WsSubmitOrderParameters) ([]order.Detai
 
 	orderRequest.Nonce = getNonce()
 	orderRequest.Request = "new_orders"
-	resp, err := c.Websocket.Conn.SendMessageReturnResponse(orderRequest.Nonce,
+	resp, err := spotWebsocket.Conn.SendMessageReturnResponse(orderRequest.Nonce,
 		orderRequest)
 	if err != nil {
 		errs = append(errs, err)
@@ -851,6 +889,10 @@ func (c *COINUT) wsSubmitOrders(orders []WsSubmitOrderParameters) ([]order.Detai
 }
 
 func (c *COINUT) wsGetOpenOrders(curr string) (*WsUserOpenOrdersResponse, error) {
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return nil, fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	var response *WsUserOpenOrdersResponse
 	if !c.Websocket.CanUseAuthenticatedEndpoints() {
 		return response, fmt.Errorf("%v not authorised to get open orders",
@@ -861,7 +903,7 @@ func (c *COINUT) wsGetOpenOrders(curr string) (*WsUserOpenOrdersResponse, error)
 	openOrdersRequest.Nonce = getNonce()
 	openOrdersRequest.InstrumentID = c.instrumentMap.LookupID(curr)
 
-	resp, err := c.Websocket.Conn.SendMessageReturnResponse(openOrdersRequest.Nonce,
+	resp, err := spotWebsocket.Conn.SendMessageReturnResponse(openOrdersRequest.Nonce,
 		openOrdersRequest)
 	if err != nil {
 		return response, err
@@ -879,6 +921,10 @@ func (c *COINUT) wsGetOpenOrders(curr string) (*WsUserOpenOrdersResponse, error)
 }
 
 func (c *COINUT) wsCancelOrder(cancellation *WsCancelOrderParameters) (*CancelOrdersResponse, error) {
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return nil, fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	var response *CancelOrdersResponse
 	if !c.Websocket.CanUseAuthenticatedEndpoints() {
 		return response, fmt.Errorf("%v not authorised to cancel order", c.Name)
@@ -895,7 +941,7 @@ func (c *COINUT) wsCancelOrder(cancellation *WsCancelOrderParameters) (*CancelOr
 	cancellationRequest.OrderID = cancellation.OrderID
 	cancellationRequest.Nonce = getNonce()
 
-	resp, err := c.Websocket.Conn.SendMessageReturnResponse(cancellationRequest.Nonce,
+	resp, err := spotWebsocket.Conn.SendMessageReturnResponse(cancellationRequest.Nonce,
 		cancellationRequest)
 	if err != nil {
 		return response, err
@@ -915,10 +961,13 @@ func (c *COINUT) wsCancelOrder(cancellation *WsCancelOrderParameters) (*CancelOr
 }
 
 func (c *COINUT) wsCancelOrders(cancellations []WsCancelOrderParameters) (*CancelOrdersResponse, error) {
-	var err error
 	var response *CancelOrdersResponse
 	if !c.Websocket.CanUseAuthenticatedEndpoints() {
-		return nil, err
+		return response, fmt.Errorf("%v not authorised to cancel order", c.Name)
+	}
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return nil, fmt.Errorf("%w asset type: %v", err, asset.Spot)
 	}
 	var cancelOrderRequest WsCancelOrdersRequest
 	for i := range cancellations {
@@ -937,7 +986,7 @@ func (c *COINUT) wsCancelOrders(cancellations []WsCancelOrderParameters) (*Cance
 
 	cancelOrderRequest.Request = "cancel_orders"
 	cancelOrderRequest.Nonce = getNonce()
-	resp, err := c.Websocket.Conn.SendMessageReturnResponse(cancelOrderRequest.Nonce,
+	resp, err := spotWebsocket.Conn.SendMessageReturnResponse(cancelOrderRequest.Nonce,
 		cancelOrderRequest)
 	if err != nil {
 		return response, err
@@ -955,7 +1004,10 @@ func (c *COINUT) wsGetTradeHistory(p currency.Pair, start, limit int64) (*WsTrad
 		return response, fmt.Errorf("%v not authorised to get trade history",
 			c.Name)
 	}
-
+	spotWebsocket, err := c.Websocket.GetAssetWebsocket(asset.Spot)
+	if err != nil {
+		return nil, fmt.Errorf("%w asset type: %v", err, asset.Spot)
+	}
 	curr, err := c.FormatExchangeCurrency(p, asset.Spot)
 	if err != nil {
 		return nil, err
@@ -968,7 +1020,7 @@ func (c *COINUT) wsGetTradeHistory(p currency.Pair, start, limit int64) (*WsTrad
 	request.Start = start
 	request.Limit = limit
 
-	resp, err := c.Websocket.Conn.SendMessageReturnResponse(request.Nonce,
+	resp, err := spotWebsocket.Conn.SendMessageReturnResponse(request.Nonce,
 		request)
 	if err != nil {
 		return response, err

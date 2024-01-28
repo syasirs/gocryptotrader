@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/config"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
@@ -44,7 +44,7 @@ var (
 
 	errAlreadyRunning                       = errors.New("connection monitor is already running")
 	errExchangeConfigIsNil                  = errors.New("exchange config is nil")
-	errWebsocketIsNil                       = errors.New("websocket is nil")
+	errWebsocketWrapperIsNil                = errors.New("websocket wrapper is nil")
 	errWebsocketSetupIsNil                  = errors.New("websocket setup is nil")
 	errWebsocketAlreadyInitialised          = errors.New("websocket already initialised")
 	errWebsocketFeaturesIsUnset             = errors.New("websocket features is unset")
@@ -59,6 +59,8 @@ var (
 	errWebsocketConnectorUnset              = errors.New("websocket connector function not set")
 	errWebsocketSubscriptionsGeneratorUnset = errors.New("websocket subscriptions generator function needs to be set")
 	errClosedConnection                     = errors.New("use of closed network connection")
+	errDisconnectedConnectionShutdown       = errors.New("cannot shutdown a disconnected websocket")
+	errReconnectingConnectionShutdown       = errors.New("cannot shutdown, in the process of reconnection")
 	errSubscriptionsExceedsLimit            = errors.New("subscriptions exceeds limit")
 	errInvalidMaxSubscriptions              = errors.New("max subscriptions cannot be less than 0")
 	errNoSubscriptionsSupplied              = errors.New("no subscriptions supplied")
@@ -72,123 +74,6 @@ var globalReporter Reporter
 // for all exchange requests
 func SetupGlobalReporter(r Reporter) {
 	globalReporter = r
-}
-
-// New initialises the websocket struct
-func New() *Websocket {
-	return &Websocket{
-		Init:              true,
-		DataHandler:       make(chan interface{}, defaultJobBuffer),
-		ToRoutine:         make(chan interface{}, defaultJobBuffer),
-		TrafficAlert:      make(chan struct{}),
-		ReadMessageErrors: make(chan error),
-		Subscribe:         make(chan []subscription.Subscription),
-		Unsubscribe:       make(chan []subscription.Subscription),
-		Match:             NewMatch(),
-	}
-}
-
-// Setup sets main variables for websocket connection
-func (w *Websocket) Setup(s *WebsocketSetup) error {
-	if w == nil {
-		return errWebsocketIsNil
-	}
-
-	if s == nil {
-		return errWebsocketSetupIsNil
-	}
-
-	if !w.Init {
-		return fmt.Errorf("%s %w", w.exchangeName, errWebsocketAlreadyInitialised)
-	}
-
-	if s.ExchangeConfig == nil {
-		return errExchangeConfigIsNil
-	}
-
-	if s.ExchangeConfig.Name == "" {
-		return errExchangeConfigNameUnset
-	}
-	w.exchangeName = s.ExchangeConfig.Name
-	w.verbose = s.ExchangeConfig.Verbose
-
-	if s.Features == nil {
-		return fmt.Errorf("%s %w", w.exchangeName, errWebsocketFeaturesIsUnset)
-	}
-	w.features = s.Features
-
-	if s.ExchangeConfig.Features == nil {
-		return fmt.Errorf("%s %w", w.exchangeName, errConfigFeaturesIsNil)
-	}
-	w.enabled = s.ExchangeConfig.Features.Enabled.Websocket
-
-	if s.Connector == nil {
-		return fmt.Errorf("%s %w", w.exchangeName, errWebsocketConnectorUnset)
-	}
-	w.connector = s.Connector
-
-	if s.Subscriber == nil {
-		return fmt.Errorf("%s %w", w.exchangeName, errWebsocketSubscriberUnset)
-	}
-	w.Subscriber = s.Subscriber
-
-	if w.features.Unsubscribe && s.Unsubscriber == nil {
-		return fmt.Errorf("%s %w", w.exchangeName, errWebsocketUnsubscriberUnset)
-	}
-	w.connectionMonitorDelay = s.ExchangeConfig.ConnectionMonitorDelay
-	if w.connectionMonitorDelay <= 0 {
-		w.connectionMonitorDelay = config.DefaultConnectionMonitorDelay
-	}
-	w.Unsubscriber = s.Unsubscriber
-
-	if s.GenerateSubscriptions == nil {
-		return fmt.Errorf("%s %w", w.exchangeName, errWebsocketSubscriptionsGeneratorUnset)
-	}
-	w.GenerateSubs = s.GenerateSubscriptions
-
-	if s.DefaultURL == "" {
-		return fmt.Errorf("%s websocket %w", w.exchangeName, errDefaultURLIsEmpty)
-	}
-	w.defaultURL = s.DefaultURL
-	if s.RunningURL == "" {
-		return fmt.Errorf("%s websocket %w", w.exchangeName, errRunningURLIsEmpty)
-	}
-	err := w.SetWebsocketURL(s.RunningURL, false, false)
-	if err != nil {
-		return fmt.Errorf("%s %w", w.exchangeName, err)
-	}
-
-	if s.RunningURLAuth != "" {
-		err = w.SetWebsocketURL(s.RunningURLAuth, true, false)
-		if err != nil {
-			return fmt.Errorf("%s %w", w.exchangeName, err)
-		}
-	}
-
-	if s.ExchangeConfig.WebsocketTrafficTimeout < time.Second {
-		return fmt.Errorf("%s %w cannot be less than %s",
-			w.exchangeName,
-			errInvalidTrafficTimeout,
-			time.Second)
-	}
-	w.trafficTimeout = s.ExchangeConfig.WebsocketTrafficTimeout
-
-	w.ShutdownC = make(chan struct{})
-	w.Wg = new(sync.WaitGroup)
-	w.SetCanUseAuthenticatedEndpoints(s.ExchangeConfig.API.AuthenticatedWebsocketSupport)
-
-	if err := w.Orderbook.Setup(s.ExchangeConfig, &s.OrderbookBufferConfig, w.DataHandler); err != nil {
-		return err
-	}
-
-	w.Trade.Setup(w.exchangeName, s.TradeFeed, w.DataHandler)
-	w.Fills.Setup(s.FillsFeed, w.DataHandler)
-
-	if s.MaxWebsocketSubscriptionsPerConnection < 0 {
-		return fmt.Errorf("%s %w", w.exchangeName, errInvalidMaxSubscriptions)
-	}
-	w.MaxSubscriptionsPerConnection = s.MaxWebsocketSubscriptionsPerConnection
-	return nil
 }
 
 // SetupNewConnection sets up an auth or unauth streaming connection
@@ -218,10 +103,6 @@ func (w *Websocket) SetupNewConnection(c ConnectionSetup) error {
 	}
 
 	if c.ConnectionLevelReporter == nil {
-		c.ConnectionLevelReporter = w.ExchangeLevelReporter
-	}
-
-	if c.ConnectionLevelReporter == nil {
 		c.ConnectionLevelReporter = globalReporter
 	}
 
@@ -242,6 +123,7 @@ func (w *Websocket) SetupNewConnection(c ConnectionSetup) error {
 
 	if c.Authenticated {
 		w.AuthConn = newConn
+		w.SetCanUseAuthenticatedEndpoints(true)
 	} else {
 		w.Conn = newConn
 	}
@@ -270,7 +152,6 @@ func (w *Websocket) Connect() error {
 			w.exchangeName)
 	}
 
-	w.dataMonitor()
 	w.trafficMonitor()
 	w.setConnectingStatus(true)
 
@@ -293,7 +174,6 @@ func (w *Websocket) Connect() error {
 				err)
 		}
 	}
-
 	subs, err := w.GenerateSubs() // regenerate state on new connection
 	if err != nil {
 		return fmt.Errorf("%s websocket: %w", w.exchangeName, common.AppendError(ErrSubscriptionFailure, err))
@@ -331,52 +211,6 @@ func (w *Websocket) Enable() error {
 
 	w.setEnabled(true)
 	return w.Connect()
-}
-
-// dataMonitor monitors job throughput and logs if there is a back log of data
-func (w *Websocket) dataMonitor() {
-	if w.IsDataMonitorRunning() {
-		return
-	}
-	w.setDataMonitorRunning(true)
-	w.Wg.Add(1)
-
-	go func() {
-		defer func() {
-			for {
-				// Bleeds data from the websocket connection if needed
-				select {
-				case <-w.DataHandler:
-				default:
-					w.setDataMonitorRunning(false)
-					w.Wg.Done()
-					return
-				}
-			}
-		}()
-
-		for {
-			select {
-			case <-w.ShutdownC:
-				return
-			case d := <-w.DataHandler:
-				select {
-				case w.ToRoutine <- d:
-				case <-w.ShutdownC:
-					return
-				default:
-					log.Warnf(log.WebsocketMgr,
-						"%s exchange backlog in websocket processing detected",
-						w.exchangeName)
-					select {
-					case w.ToRoutine <- d:
-					case <-w.ShutdownC:
-						return
-					}
-				}
-			}
-		}
-	}()
 }
 
 // connectionMonitor ensures that the WS keeps connecting
@@ -455,15 +289,12 @@ func (w *Websocket) Shutdown() error {
 	defer w.m.Unlock()
 
 	if !w.IsConnected() {
-		return fmt.Errorf("%v websocket: cannot shutdown %w",
-			w.exchangeName,
-			ErrNotConnected)
+		return nil
 	}
 
 	// TODO: Interrupt connection and or close connection when it is re-established.
 	if w.IsConnecting() {
-		return fmt.Errorf("%v websocket: cannot shutdown, in the process of reconnection",
-			w.exchangeName)
+		return fmt.Errorf("%v websocket: %w", w.exchangeName, errReconnectingConnectionShutdown)
 	}
 
 	if w.verbose {
@@ -486,14 +317,20 @@ func (w *Websocket) Shutdown() error {
 		}
 	}
 
+	close(w.ShutdownC)
+	w.Wg.Wait()
+	w.ShutdownC = make(chan struct{})
+
 	// flush any subscriptions from last connection if needed
 	w.subscriptionMutex.Lock()
 	w.subscriptions = subscriptionMap{}
 	w.subscriptionMutex.Unlock()
 
-	close(w.ShutdownC)
-	w.Wg.Wait()
-	w.ShutdownC = make(chan struct{})
+	if !isAssetItemChannelClosed(w.AssetShutdownC) {
+		w.AssetShutdownC <- w.AssetType
+	} else if w.verbose {
+		log.Errorf(log.ExchangeSys, "%s sending message to a shutdown message to a closed channel asset type %v", w.exchangeName, w.AssetType)
+	}
 	w.setConnectedStatus(false)
 	w.setConnectingStatus(false)
 	if w.verbose {
@@ -725,19 +562,6 @@ func (w *Websocket) IsConnectionMonitorRunning() bool {
 	w.fieldMutex.RLock()
 	defer w.fieldMutex.RUnlock()
 	return w.connectionMonitorRunning
-}
-
-func (w *Websocket) setDataMonitorRunning(b bool) {
-	w.fieldMutex.Lock()
-	w.dataMonitorRunning = b
-	w.fieldMutex.Unlock()
-}
-
-// IsDataMonitorRunning returns status of data monitor
-func (w *Websocket) IsDataMonitorRunning() bool {
-	w.fieldMutex.RLock()
-	defer w.fieldMutex.RUnlock()
-	return w.dataMonitorRunning
 }
 
 // CanUseAuthenticatedWebsocketForWrapper Handles a common check to
@@ -1068,6 +892,16 @@ func checkWebsocketURL(s string) error {
 		return fmt.Errorf("cannot set %w %s", errInvalidWebsocketURL, s)
 	}
 	return nil
+}
+
+// isAssetItemChannelClosed checks if the asset item channel is closed
+func isAssetItemChannelClosed(assetChan chan asset.Item) bool {
+	select {
+	case <-assetChan:
+		return true
+	default:
+	}
+	return false
 }
 
 // checkSubscriptions checks subscriptions against the max subscription limit

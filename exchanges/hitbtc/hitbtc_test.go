@@ -51,7 +51,7 @@ func TestMain(m *testing.M) {
 	hitbtcConfig.API.AuthenticatedWebsocketSupport = true
 	hitbtcConfig.API.Credentials.Key = apiKey
 	hitbtcConfig.API.Credentials.Secret = apiSecret
-	h.Websocket = sharedtestvalues.NewTestWebsocket()
+	h.Websocket = sharedtestvalues.NewTestWrapperWebsocket()
 	err = h.Setup(hitbtcConfig)
 	if err != nil {
 		log.Fatal("HitBTC setup error", err)
@@ -487,7 +487,7 @@ func setupWsAuth(t *testing.T) {
 	}
 
 	var dialer websocket.Dialer
-	err := h.Websocket.Conn.Dial(&dialer, http.Header{})
+	err := h.Websocket.AssetTypeWebsockets[asset.Spot].Conn.Dial(&dialer, http.Header{})
 	if err != nil {
 		t.Fatal(err)
 	}
