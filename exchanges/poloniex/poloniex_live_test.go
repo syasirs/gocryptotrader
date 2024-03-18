@@ -37,5 +37,11 @@ func TestMain(m *testing.M) {
 	log.Printf(sharedtestvalues.LiveTesting, p.Name)
 	p.Websocket.DataHandler = sharedtestvalues.GetWebsocketInterfaceChannelOverride()
 	p.Websocket.TrafficAlert = sharedtestvalues.GetWebsocketStructChannelOverride()
+	err = p.Websocket.Enable()
+	if err != nil {
+		log.Fatal(err)
+	}
+	setupWS()
+	p.HTTPRecording = true
 	os.Exit(m.Run())
 }
