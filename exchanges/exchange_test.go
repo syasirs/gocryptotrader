@@ -15,6 +15,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/collateral"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/fee"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/futures"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/margin"
@@ -3224,9 +3225,7 @@ func TestGetOpenInterest(t *testing.T) {
 }
 
 // FakeBase is used to override functions
-type FakeBase struct {
-	Base
-}
+type FakeBase struct{ Base }
 
 func (f *FakeBase) GetOpenInterest(context.Context, ...key.PairAsset) ([]futures.OpenInterest, error) {
 	return []futures.OpenInterest{
@@ -3329,4 +3328,17 @@ func TestParallelChanOp(t *testing.T) {
 	}
 	assert.EventuallyWithT(t, f, 500*time.Millisecond, 50*time.Millisecond, "ParallelChanOp should complete within 500ms not 5*300ms")
 	assert.Len(t, run, len(c), "Every channel was run to completion")
+}
+
+func TestSynchroniseFees(t *testing.T) {
+	t.Parallel()
+	if err := (&Base{}).SynchroniseFees(context.Background(), asset.Spot); !errors.Is(err, common.ErrNotYetImplemented) {
+		t.Errorf("received: %v, expected: %v", err, common.ErrNotYetImplemented)
+	}
+}
+
+func TestGetPercentageFeeRates(t *testing.T) {
+	t.Parallel()
+	_, err := (&Base{Name: "test"}).GetPercentageFeeRates(currency.NewBTCUSD(), asset.Spot)
+	assert.ErrorIs(t, err, fee.ErrFeeRateNotFound)
 }
