@@ -30,6 +30,7 @@ Join our slack to discuss all things related to GoCryptoTrader! [GoCryptoTrader 
 | BTSE | Yes | Yes | NA |
 | Bybit | Yes | Yes | NA |
 | CoinbasePro | Yes | Yes | No|
+| CoinbaseInternational | Yes | Yes | No |
 | COINUT | Yes | Yes | NA |
 | Exmo | Yes | NA | NA |
 | GateIO | Yes | Yes | NA |
@@ -146,6 +147,7 @@ Binaries will be published once the codebase reaches a stable condition.
 | [dependabot[bot]](https://github.com/apps/dependabot) | 228 |
 | [gloriousCode](https://github.com/gloriousCode) | 224 |
 | [dependabot-preview[bot]](https://github.com/apps/dependabot-preview) | 88 |
+| [gbjk](https://github.com/gbjk) | 48 |
 | [xtda](https://github.com/xtda) | 47 |
 | [gbjk](https://github.com/gbjk) | 42 |
 | [lrascao](https://github.com/lrascao) | 27 |
