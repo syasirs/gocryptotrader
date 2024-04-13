@@ -40,7 +40,7 @@ func TestInstance(e exchange.IBotExchange) error {
 	e.SetDefaults()
 	b := e.GetBase()
 	b.Websocket = sharedtestvalues.NewTestWebsocket()
-	err = e.Setup(exchConf)
+	err = e.Setup(context.Background(), exchConf)
 	if err != nil {
 		return fmt.Errorf("Setup() error: %w", err)
 	}
@@ -173,7 +173,7 @@ func UpdatePairsOnce(tb testing.TB, e exchange.IBotExchange) {
 		return
 	}
 
-	err := e.UpdateTradablePairs(context.Background(), true)
+	err := e.UpdateTradablePairs(context.Background(), e)
 	require.NoError(tb, err, "UpdateTradablePairs must not error")
 
 	updatePairsOnce[e] = true

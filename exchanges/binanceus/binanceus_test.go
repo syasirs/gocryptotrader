@@ -20,6 +20,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
+	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
 
@@ -55,7 +56,7 @@ func TestMain(m *testing.M) {
 	bi.SetDefaults()
 	bi.Websocket = sharedtestvalues.NewTestWebsocket()
 	bi.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
-	err = bi.Setup(exchCfg)
+	err = bi.Setup(context.Background(), exchCfg)
 	if err != nil {
 		log.Fatal("Binanceus TestMain()", err)
 	}
@@ -124,10 +125,7 @@ func TestFetchTradablePairs(t *testing.T) {
 
 func TestUpdateTradablePairs(t *testing.T) {
 	t.Parallel()
-	err := bi.UpdateTradablePairs(context.Background(), false)
-	if err != nil {
-		t.Error("Binanceus UpdateTradablePairs() error", err)
-	}
+	testexch.UpdatePairsOnce(t, bi)
 }
 
 func TestFetchAccountInfo(t *testing.T) {

@@ -24,6 +24,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
+	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
 
@@ -53,7 +54,7 @@ func TestMain(m *testing.M) {
 	bitmexConfig.API.Credentials.Key = apiKey
 	bitmexConfig.API.Credentials.Secret = apiSecret
 	b.Websocket = sharedtestvalues.NewTestWebsocket()
-	err = b.Setup(bitmexConfig)
+	err = b.Setup(context.Background(), bitmexConfig)
 	if err != nil {
 		log.Fatal("Bitmex setup error", err)
 	}
@@ -820,10 +821,7 @@ func TestWsAuth(t *testing.T) {
 
 func TestUpdateTradablePairs(t *testing.T) {
 	t.Parallel()
-	err := b.UpdateTradablePairs(context.Background(), true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	testexch.UpdatePairsOnce(t, b)
 }
 
 func TestWsPositionUpdate(t *testing.T) {
@@ -1061,12 +1059,9 @@ func TestWsTrades(t *testing.T) {
 
 func TestGetRecentTrades(t *testing.T) {
 	t.Parallel()
-	err := b.UpdateTradablePairs(context.Background(), false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	testexch.UpdatePairsOnce(t, b)
 	currencyPair := b.CurrencyPairs.Pairs[asset.Futures].Available[0]
-	_, err = b.GetRecentTrades(context.Background(), currencyPair, asset.Futures)
+	_, err := b.GetRecentTrades(context.Background(), currencyPair, asset.Futures)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1074,12 +1069,9 @@ func TestGetRecentTrades(t *testing.T) {
 
 func TestGetHistoricTrades(t *testing.T) {
 	t.Parallel()
-	err := b.UpdateTradablePairs(context.Background(), false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	testexch.UpdatePairsOnce(t, b)
 	currencyPair := b.CurrencyPairs.Pairs[asset.Futures].Available[0]
-	_, err = b.GetHistoricTrades(context.Background(), currencyPair, asset.Futures, time.Now().Add(-time.Minute), time.Now())
+	_, err := b.GetHistoricTrades(context.Background(), currencyPair, asset.Futures, time.Now().Add(-time.Minute), time.Now())
 	if err != nil {
 		t.Error(err)
 	}

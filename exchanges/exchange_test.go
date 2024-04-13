@@ -1378,18 +1378,18 @@ func TestUpdatePairs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, true, false)
+	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, true)
 	if err != nil {
 		t.Errorf("TestUpdatePairs error: %s", err)
 	}
 
-	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, false, false)
+	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, false)
 	if err != nil {
 		t.Errorf("TestUpdatePairs error: %s", err)
 	}
 
 	// Test updating the same new products, diff should be 0
-	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, true, false)
+	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, true)
 	if err != nil {
 		t.Errorf("TestUpdatePairs error: %s", err)
 	}
@@ -1400,7 +1400,7 @@ func TestUpdatePairs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, true, true)
+	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, true)
 	if err != nil {
 		t.Errorf("TestUpdatePairs error: %s", err)
 	}
@@ -1414,13 +1414,13 @@ func TestUpdatePairs(t *testing.T) {
 		t.Fatal(err)
 	}
 	UAC.Name = defaultTestExchange
-	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, false, false)
+	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, false)
 	if err != nil {
 		t.Errorf("Exchange UpdatePairs() error: %s", err)
 	}
 
 	// Test updating the same new products, diff should be 0
-	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, false, false)
+	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, false)
 	if err != nil {
 		t.Errorf("Exchange UpdatePairs() error: %s", err)
 	}
@@ -1430,7 +1430,7 @@ func TestUpdatePairs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, false, true)
+	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, false)
 	if err != nil {
 		t.Errorf("Forced Exchange UpdatePairs() error: %s", err)
 	}
@@ -1440,7 +1440,7 @@ func TestUpdatePairs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, false, false)
+	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, false)
 	if err != nil {
 		t.Errorf("Exchange UpdatePairs() error: %s", err)
 	}
@@ -1451,24 +1451,24 @@ func TestUpdatePairs(t *testing.T) {
 		t.Fatal(err)
 	}
 	pairs := currency.Pairs{currency.EMPTYPAIR, p}
-	err = UAC.UpdatePairs(pairs, asset.Spot, true, true)
+	err = UAC.UpdatePairs(pairs, asset.Spot, true)
 	if !errors.Is(err, currency.ErrCurrencyPairEmpty) {
 		t.Fatalf("received: '%v' but expected: '%v'", err, currency.ErrCurrencyPairEmpty)
 	}
 
 	pairs = currency.Pairs{p, p}
-	err = UAC.UpdatePairs(pairs, asset.Spot, false, true)
+	err = UAC.UpdatePairs(pairs, asset.Spot, false)
 	if !errors.Is(err, currency.ErrPairDuplication) {
 		t.Fatalf("received: '%v' but expected: '%v'", err, currency.ErrPairDuplication)
 	}
 
 	pairs = currency.Pairs{p}
-	err = UAC.UpdatePairs(pairs, asset.Spot, false, true)
+	err = UAC.UpdatePairs(pairs, asset.Spot, false)
 	if !errors.Is(err, nil) {
 		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
 	}
 
-	err = UAC.UpdatePairs(pairs, asset.Spot, true, true)
+	err = UAC.UpdatePairs(pairs, asset.Spot, true)
 	if !errors.Is(err, nil) {
 		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
 	}
@@ -1492,7 +1492,7 @@ func TestUpdatePairs(t *testing.T) {
 		currency.NewPair(currency.LTC, currency.USD),
 		currency.NewPair(currency.LTC, currency.USDT),
 	}
-	err = UAC.UpdatePairs(pairs, asset.Spot, true, true)
+	err = UAC.UpdatePairs(pairs, asset.Spot, true)
 	if !errors.Is(err, nil) {
 		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
 	}
@@ -1503,7 +1503,7 @@ func TestUpdatePairs(t *testing.T) {
 		currency.NewPair(currency.LARIX, currency.USD),
 		currency.NewPair(currency.LTC, currency.USDT),
 	}
-	err = UAC.UpdatePairs(pairs, asset.Spot, false, true)
+	err = UAC.UpdatePairs(pairs, asset.Spot, false)
 	if !errors.Is(err, nil) {
 		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
 	}
@@ -1539,7 +1539,7 @@ func TestUpdatePairs(t *testing.T) {
 		unintentionalInput,
 	}
 
-	err = UAC.UpdatePairs(pairs, asset.Spot, true, true)
+	err = UAC.UpdatePairs(pairs, asset.Spot, true)
 	if !errors.Is(err, nil) {
 		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
 	}
@@ -1552,7 +1552,7 @@ func TestUpdatePairs(t *testing.T) {
 		currency.NewPair(currency.LINK, currency.USD),
 	}
 
-	err = UAC.UpdatePairs(pairs, asset.Spot, false, true)
+	err = UAC.UpdatePairs(pairs, asset.Spot, false)
 	if !errors.Is(err, nil) {
 		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
 	}
@@ -3342,6 +3342,33 @@ func TestGetDefaultConfig(t *testing.T) {
 	assert.Equal(t, cpy, exch.Requester)
 }
 
+func TestUpdateTradablePairs(t *testing.T) {
+	t.Parallel()
+
+	exch := &FakeBase{}
+	err := exch.UpdateTradablePairs(context.Background(), exch)
+	assert.ErrorIs(t, err, errSetDefaultsNotCalled)
+
+	exch.SetDefaults()
+
+	err = exch.UpdateTradablePairs(context.Background(), exch)
+	assert.ErrorIs(t, err, errSetupNotCalled)
+
+	err = exch.Setup(context.Background(), &config.Exchange{Name: "test", Enabled: true})
+	require.NoError(t, err)
+
+	err = exch.UpdateTradablePairs(context.Background(), exch)
+	require.NoError(t, err)
+
+	pair, err := exch.GetAvailablePairs(asset.Spot)
+	require.NoError(t, err)
+
+	require.Len(t, pair, 1)
+	if !pair.Contains(currency.NewPair(currency.BTC, currency.USDT), true) {
+		t.Fatal("pair not found")
+	}
+}
+
 // FakeBase is used to override functions
 type FakeBase struct{ Base }
 
@@ -3363,10 +3390,12 @@ func (f *FakeBase) SetDefaults() {
 	f.Name = "test"
 	f.Requester, _ = request.New("test", common.NewHTTPClientWithTimeout(time.Second))
 	f.Features.Supports.RESTCapabilities.AutoPairUpdates = true
+	requestFmt := &currency.PairFormat{Delimiter: currency.DashDelimiter, Uppercase: true}
+	configFmt := &currency.PairFormat{Delimiter: currency.DashDelimiter, Uppercase: true}
+	_ = f.SetGlobalPairsManager(requestFmt, configFmt, asset.Spot)
 }
-func (f *FakeBase) UpdateTradablePairs(context.Context, bool) error { return nil }
 
-func (f *FakeBase) Setup(*config.Exchange) error {
+func (f *FakeBase) Setup(context.Context, *config.Exchange) error {
 	return nil
 }
 
@@ -3395,7 +3424,7 @@ func (f *FakeBase) FetchTicker(context.Context, currency.Pair, asset.Item) (*tic
 }
 
 func (f *FakeBase) FetchTradablePairs(context.Context, asset.Item) (currency.Pairs, error) {
-	return nil, nil
+	return currency.Pairs{currency.NewPair(currency.BTC, currency.USDT)}, nil
 }
 
 func (f *FakeBase) GetAccountFundingHistory(context.Context) ([]FundingHistory, error) {

@@ -27,6 +27,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
+	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
 
@@ -60,16 +61,16 @@ func TestMain(m *testing.M) {
 	hConfig.API.Credentials.Key = apiKey
 	hConfig.API.Credentials.Secret = apiSecret
 	h.Websocket = sharedtestvalues.NewTestWebsocket()
-	err = h.Setup(hConfig)
-	if err != nil {
-		log.Fatal("Huobi setup error", err)
-	}
-
-	err = h.UpdateTradablePairs(context.Background(), true)
+	err = h.Setup(context.Background(), hConfig)
 	if err != nil {
 		log.Fatal("Huobi setup error", err)
 	}
 	os.Exit(m.Run())
+}
+
+func TestUpdateTradablePairs(t *testing.T) {
+	t.Parallel()
+	testexch.UpdatePairsOnce(t, h)
 }
 
 func setupWsTests(t *testing.T) {
