@@ -1462,7 +1462,7 @@ func TestGetHistoricTrades(t *testing.T) {
 	if mockTests {
 		expected = 1002
 	}
-	assert.Equal(t, expected, len(result), "GetHistoricTrades should return correct number of entries") //nolint:testifylint // assert.Len doesn't produce clear messages on result
+	assert.Equal(t, expected, len(result), "GetHistoricTrades should return correct number of entries")
 	for _, r := range result {
 		if !assert.WithinRange(t, r.Timestamp, start, end, "All trades should be within time range") {
 			break
@@ -1982,20 +1982,22 @@ func BenchmarkWsHandleData(bb *testing.B) {
 func TestSubscribe(t *testing.T) {
 	t.Parallel()
 	b := b
-	channels := []subscription.Subscription{
+	channels := subscription.List{
 		{Channel: "btcusdt@ticker"},
 		{Channel: "btcusdt@trade"},
 	}
 	if mockTests {
-		b = testexch.MockWSInstance[Binance](t, func(msg []byte, w *websocket.Conn) error {
+		mock := func(tb testing.TB, msg []byte, w *websocket.Conn) error {
+			tb.Helper()
 			var req WsPayload
 			err := json.Unmarshal(msg, &req)
-			require.NoError(t, err, "Unmarshal should not error")
-			require.Len(t, req.Params, len(channels), "Params should only have 2 channel") // Failure might mean mockWSInstance default Subs is not empty
-			assert.Equal(t, req.Params[0], channels[0].Channel, "Channel name should be correct")
-			assert.Equal(t, req.Params[1], channels[1].Channel, "Channel name should be correct")
+			require.NoError(tb, err, "Unmarshal should not error")
+			require.Len(tb, req.Params, len(channels), "Params should only have 2 channel") // Failure might mean mockWSInstance default Subs is not empty
+			assert.Equal(tb, req.Params[0], channels[0].Channel, "Channel name should be correct")
+			assert.Equal(tb, req.Params[1], channels[1].Channel, "Channel name should be correct")
 			return w.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"result":null,"id":%d}`, req.ID)))
-		})
+		}
+		b = testexch.MockWsInstance[Binance](t, testexch.CurryWsMockUpgrader(t, mock))
 	} else {
 		testexch.SetupWs(t, b)
 	}
@@ -2007,15 +2009,17 @@ func TestSubscribe(t *testing.T) {
 
 func TestSubscribeBadResp(t *testing.T) {
 	t.Parallel()
-	channels := []subscription.Subscription{
+	channels := subscription.List{
 		{Channel: "moons@ticker"},
 	}
-	b := testexch.MockWSInstance[Binance](t, func(msg []byte, w *websocket.Conn) error { //nolint:govet // shadow
+	mock := func(tb testing.TB, msg []byte, w *websocket.Conn) error {
+		tb.Helper()
 		var req WsPayload
 		err := json.Unmarshal(msg, &req)
-		require.NoError(t, err, "Unmarshal should not error")
+		require.NoError(tb, err, "Unmarshal should not error")
 		return w.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"result":{"error":"carrots"},"id":%d}`, req.ID)))
-	})
+	}
+	b := testexch.MockWsInstance[Binance](t, testexch.CurryWsMockUpgrader(t, mock)) //nolint:govet // Intentional shadow to avoid future copy/paste mistakes
 	err := b.Subscribe(channels)
 	assert.ErrorIs(t, err, stream.ErrSubscriptionFailure, "Subscribe should error ErrSubscriptionFailure")
 	assert.ErrorIs(t, err, errUnknownError, "Subscribe should error errUnknownError")
@@ -2432,19 +2436,19 @@ func TestSeedLocalCache(t *testing.T) {
 
 func TestGenerateSubscriptions(t *testing.T) {
 	t.Parallel()
-	expected := []subscription.Subscription{}
+	expected := subscription.List{}
 	pairs, err := b.GetEnabledPairs(asset.Spot)
 	assert.NoError(t, err, "GetEnabledPairs should not error")
 	for _, p := range pairs {
 		for _, c := range []string{"kline_1m", "depth@100ms", "ticker", "trade"} {
-			expected = append(expected, subscription.Subscription{
+			expected = append(expected, &subscription.Subscription{
 				Channel: p.Format(currency.PairFormat{Delimiter: "", Uppercase: false}).String() + "@" + c,
-				Pair:    p,
+				Pairs:   currency.Pairs{p},
 				Asset:   asset.Spot,
 			})
 		}
 	}
-	subs, err := b.GenerateSubscriptions()
+	subs, err := b.generateSubscriptions()
 	assert.NoError(t, err, "GenerateSubscriptions should not error")
 	if assert.Len(t, subs, len(expected), "Should have the correct number of subs") {
 		assert.ElementsMatch(t, subs, expected, "Should get the correct subscriptions")

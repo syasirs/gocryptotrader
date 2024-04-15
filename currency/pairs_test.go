@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPairsUpper(t *testing.T) {
@@ -897,4 +899,20 @@ func TestGetPairsByBase(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("received: '%v' but expected '%v'", len(got), 3)
 	}
+}
+
+// TestPairsSort exercises Pairs.Sort
+func TestPairsSort(t *testing.T) {
+	p := Pairs{NewPair(USDT, BTC), NewPair(DAI, XRP), NewPair(DAI, BTC)}
+	p.Sort()
+	assert.Equal(t, []string{"DAIBTC", "DAIXRP", "USDTBTC"}, p.Strings(), "Pairs should be sorted")
+}
+
+// TestPairsEqual exercises Pairs.Equal
+func TestPairsEqual(t *testing.T) {
+
+	orig := Pairs{NewPairWithDelimiter("USDT", "BTC", "-"), NewPair(DAI, XRP), NewPair(DAI, BTC)}
+	assert.True(t, orig.Equal(Pairs{NewPair(DAI, XRP), NewPair(DAI, BTC), NewPair(USDT, BTC)}), "Equal Pairs should return true")
+	assert.Equal(t, "USDT-BTC", orig[0].String(), "Equal Pairs should not effect original order or format")
+	assert.False(t, orig.Equal(Pairs{NewPair(DAI, XRP), NewPair(DAI, BTC), NewPair(USD, LTC)}), "UnEqual Pairs should return false")
 }

@@ -19,8 +19,7 @@ func NewBTCUSD() Pair {
 	return NewPair(BTC, USD)
 }
 
-// NewPairDelimiter splits the desired currency string at delimiter, the returns
-// a Pair struct
+// NewPairDelimiter splits the desired currency string at delimiter, the returns a Pair struct
 func NewPairDelimiter(currencyPair, delimiter string) (Pair, error) {
 	if !strings.Contains(currencyPair, delimiter) {
 		return EMPTYPAIR,
@@ -77,8 +76,7 @@ func NewPairWithDelimiter(base, quote, delimiter string) Pair {
 	}
 }
 
-// NewPairFromIndex returns a CurrencyPair via a currency string and specific
-// index
+// NewPairFromIndex returns a CurrencyPair via a currency string and specific index
 func NewPairFromIndex(currencyPair, index string) (Pair, error) {
 	i := strings.Index(currencyPair, index)
 	if i == -1 {

@@ -1,92 +1,132 @@
 package subscription
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 )
 
-// DefaultKey is the fallback key for AddSuccessfulSubscriptions
-type DefaultKey struct {
-	Channel string
-	Pair    currency.Pair
-	Asset   asset.Item
-}
+// State constants
+const (
+	InactiveState State = iota
+	SubscribingState
+	SubscribedState
+	ResubscribingState
+	UnsubscribingState
+	UnsubscribedState
+)
+
+// Ticker constants
+const (
+	TickerChannel    = "ticker"
+	OrderbookChannel = "orderbook"
+	CandlesChannel   = "candles"
+	AllOrdersChannel = "allOrders"
+	AllTradesChannel = "allTrades"
+	MyTradesChannel  = "myTrades"
+	MyOrdersChannel  = "myOrders"
+)
+
+// Public errors
+var (
+	ErrNotFound             = errors.New("subscription not found")
+	ErrNotSinglePair        = errors.New("only single pair subscriptions expected")
+	ErrBatchingNotSupported = errors.New("subscription batching not supported")
+	ErrInStateAlready       = errors.New("subscription already in state")
+	ErrInvalidState         = errors.New("invalid subscription state")
+	ErrDuplicate            = errors.New("duplicate subscription")
+	ErrPrivateChannelName   = errors.New("must use standard channel name constants")
+)
 
 // State tracks the status of a subscription channel
 type State uint8
-
-const (
-	UnknownState       State = iota // UnknownState subscription state is not registered, but doesn't imply Inactive
-	SubscribingState                // SubscribingState means channel is in the process of subscribing
-	SubscribedState                 // SubscribedState means the channel has finished a successful and acknowledged subscription
-	UnsubscribingState              // UnsubscribingState means the channel has started to unsubscribe, but not yet confirmed
-
-	TickerChannel    = "ticker"    // TickerChannel Subscription Type
-	OrderbookChannel = "orderbook" // OrderbookChannel Subscription Type
-	CandlesChannel   = "candles"   // CandlesChannel Subscription Type
-	AllOrdersChannel = "allOrders" // AllOrdersChannel Subscription Type
-	AllTradesChannel = "allTrades" // AllTradesChannel Subscription Type
-	MyTradesChannel  = "myTrades"  // MyTradesChannel Subscription Type
-	MyOrdersChannel  = "myOrders"  // MyOrdersChannel Subscription Type
-)
 
 // Subscription container for streaming subscriptions
 type Subscription struct {
 	Enabled       bool                   `json:"enabled"`
 	Key           any                    `json:"-"`
 	Channel       string                 `json:"channel,omitempty"`
-	Pair          currency.Pair          `json:"pair,omitempty"`
+	Pairs         currency.Pairs         `json:"pairs,omitempty"`
 	Asset         asset.Item             `json:"asset,omitempty"`
 	Params        map[string]interface{} `json:"params,omitempty"`
-	State         State                  `json:"-"`
 	Interval      kline.Interval         `json:"interval,omitempty"`
 	Levels        int                    `json:"levels,omitempty"`
 	Authenticated bool                   `json:"authenticated,omitempty"`
-}
-
-// MarshalJSON generates a JSON representation of a Subscription, specifically for config writing
-// The only reason it exists is to avoid having to make Pair a pointer, since that would be generally painful
-// If Pair becomes a pointer, this method is redundant and should be removed
-func (s *Subscription) MarshalJSON() ([]byte, error) {
-	// None of the usual type embedding tricks seem to work for not emitting an nil Pair
-	// The embedded type's Pair always fills the empty value
-	type MaybePair struct {
-		Enabled       bool                   `json:"enabled"`
-		Channel       string                 `json:"channel,omitempty"`
-		Asset         asset.Item             `json:"asset,omitempty"`
-		Params        map[string]interface{} `json:"params,omitempty"`
-		Interval      kline.Interval         `json:"interval,omitempty"`
-		Levels        int                    `json:"levels,omitempty"`
-		Authenticated bool                   `json:"authenticated,omitempty"`
-		Pair          *currency.Pair         `json:"pair,omitempty"`
-	}
-
-	k := MaybePair{s.Enabled, s.Channel, s.Asset, s.Params, s.Interval, s.Levels, s.Authenticated, nil}
-	if s.Pair != currency.EMPTYPAIR {
-		k.Pair = &s.Pair
-	}
-
-	return json.Marshal(k)
+	state         State
+	m             sync.RWMutex
 }
 
 // String implements the Stringer interface for Subscription, giving a human representation of the subscription
 func (s *Subscription) String() string {
-	return fmt.Sprintf("%s %s %s", s.Channel, s.Asset, s.Pair)
+	p := s.Pairs.Format(currency.PairFormat{Uppercase: true, Delimiter: "/"})
+	return fmt.Sprintf("%s %s %s", s.Channel, s.Asset, p.Join())
 }
 
-// EnsureKeyed sets the default key on a channel if it doesn't have one
-// Returns key for convenience
+// State returns the subscription state
+func (s *Subscription) State() State {
+	s.m.RLock()
+	defer s.m.RUnlock()
+	return s.state
+}
+
+// SetState sets the subscription state
+// Errors if already in that state or the new state is not valid
+func (s *Subscription) SetState(state State) error {
+	s.m.Lock()
+	defer s.m.Unlock()
+	if state == s.state {
+		return ErrInStateAlready
+	}
+	if state > UnsubscribedState {
+		return ErrInvalidState
+	}
+	s.state = state
+	return nil
+}
+
+// SetKey does what it says on the tin safely for concurrency
+func (s *Subscription) SetKey(key any) {
+	s.m.Lock()
+	defer s.m.Unlock()
+	s.Key = key
+}
+
+// EnsureKeyed returns the subscription key
+// If no key exists then ExactKey will be used
 func (s *Subscription) EnsureKeyed() any {
 	if s.Key == nil {
-		s.Key = DefaultKey{
-			Channel: s.Channel,
-			Asset:   s.Asset,
-			Pair:    s.Pair,
-		}
+		s.Key = &ExactKey{s}
 	}
 	return s.Key
+}
+
+// Clone returns a copy of a subscription
+// Key is set to nil, because any original key is meaningless on a clone
+func (s *Subscription) Clone() *Subscription {
+	s.m.RLock()
+	n := *s //nolint:govet // Replacing lock immediately below
+	s.m.RUnlock()
+	n.m = sync.RWMutex{}
+	n.Key = nil
+	return &n
+}
+
+// SetPairs does what it says on the tin safely for currency
+func (s *Subscription) SetPairs(pairs currency.Pairs) {
+	s.m.Lock()
+	s.Pairs = pairs
+	s.m.Unlock()
+}
+
+// AddPairs does what it says on the tin safely for concurrency
+func (s *Subscription) AddPairs(pairs ...currency.Pair) {
+	s.m.Lock()
+	for _, p := range pairs {
+		s.Pairs = s.Pairs.Add(p)
+	}
+	s.m.Unlock()
 }
