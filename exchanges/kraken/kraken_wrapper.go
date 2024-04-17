@@ -1794,3 +1794,18 @@ func (k *Kraken) GetOpenInterest(ctx context.Context, keys ...key.PairAsset) ([]
 	}
 	return resp, nil
 }
+
+// GetCurrencyTradeURL returns the URL to the exchange's trade page for the given asset and currency pair
+func (k *Kraken) GetCurrencyTradeURL(_ context.Context, a asset.Item, cp currency.Pair) (string, error) {
+	_, err := k.CurrencyPairs.IsPairEnabled(cp, a)
+	if err != nil {
+		return "", err
+	}
+	cp.Delimiter = "-"
+	switch a {
+	case asset.Spot:
+		return tradeBaseURL + cp.Lower().String(), nil
+	default:
+		return "", fmt.Errorf("%w %v", asset.ErrNotSupported, a)
+	}
+}

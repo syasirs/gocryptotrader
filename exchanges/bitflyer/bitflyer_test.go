@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/config"
 	"github.com/thrasher-corp/gocryptotrader/core"
@@ -15,6 +17,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
+	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
 
@@ -451,5 +454,21 @@ func TestGetHistoricTrades(t *testing.T) {
 		currencyPair, asset.Spot, time.Now().Add(-time.Minute*15), time.Now())
 	if err != nil && err != common.ErrFunctionNotSupported {
 		t.Fatal(err)
+	}
+}
+
+func TestGetCurrencyTradeURL(t *testing.T) {
+	t.Parallel()
+	testexch.UpdatePairsOnce(t, b)
+	for _, a := range b.GetAssetTypes(false) {
+		pairs, err := b.CurrencyPairs.GetPairs(a, false)
+		if len(pairs) == 0 {
+			continue
+		}
+		require.NoError(t, err, "cannot get pairs for %s", a)
+
+		resp, err := b.GetCurrencyTradeURL(context.Background(), a, pairs[0])
+		require.NoError(t, err)
+		assert.NotEmpty(t, resp)
 	}
 }

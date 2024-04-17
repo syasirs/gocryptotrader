@@ -31,6 +31,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
+	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
 
@@ -2281,4 +2282,23 @@ func TestGetOpenInterest(t *testing.T) {
 	resp, err = k.GetOpenInterest(context.Background())
 	assert.NoError(t, err)
 	assert.NotEmpty(t, resp)
+}
+
+func TestGetCurrencyTradeURL(t *testing.T) {
+	t.Parallel()
+	testexch.UpdatePairsOnce(t, k)
+	for _, a := range k.GetAssetTypes(false) {
+		pairs, err := k.CurrencyPairs.GetPairs(a, false)
+		if len(pairs) == 0 {
+			continue
+		}
+		require.NoError(t, err, "cannot get pairs for %s", a)
+		resp, err := k.GetCurrencyTradeURL(context.Background(), a, pairs[0])
+		if a != asset.Spot {
+			assert.ErrorIs(t, err, asset.ErrNotSupported)
+			continue
+		}
+		require.NoError(t, err)
+		assert.NotEmpty(t, resp)
+	}
 }

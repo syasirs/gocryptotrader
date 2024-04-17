@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/config"
 	"github.com/thrasher-corp/gocryptotrader/core"
@@ -559,5 +561,19 @@ func TestWrapperGetServerTime(t *testing.T) {
 
 	if st.IsZero() {
 		t.Fatal("expected a time")
+	}
+}
+
+func TestGetCurrencyTradeURL(t *testing.T) {
+	t.Parallel()
+	for _, a := range y.GetAssetTypes(false) {
+		pairs, err := y.CurrencyPairs.GetPairs(a, false)
+		if len(pairs) == 0 {
+			continue
+		}
+		require.NoError(t, err, "cannot get pairs for %s", a)
+		resp, err := y.GetCurrencyTradeURL(context.Background(), a, pairs[0])
+		require.NoError(t, err)
+		assert.NotEmpty(t, resp)
 	}
 }

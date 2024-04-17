@@ -2009,3 +2009,19 @@ func setupWs(tb testing.TB) {
 
 	wsConnected = true
 }
+
+func TestGetCurrencyTradeURL(t *testing.T) {
+	t.Parallel()
+	testexch.UpdatePairsOnce(t, b)
+	for _, a := range b.GetAssetTypes(false) {
+		pairs, err := b.CurrencyPairs.GetPairs(a, false)
+		if len(pairs) == 0 {
+			continue
+		}
+		require.NoError(t, err, "cannot get pairs for %s", a)
+
+		resp, err := b.GetCurrencyTradeURL(context.Background(), a, pairs[0])
+		require.NoError(t, err)
+		assert.NotEmpty(t, resp)
+	}
+}
