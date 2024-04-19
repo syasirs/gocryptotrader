@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -21,10 +23,22 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 )
 
+var rootRE = regexp.MustCompile(`^(.*/)(?:exchanges|internal)/`)
+
 // TestInstance takes an empty exchange instance and loads config for it from testdata/configtest and connects a NewTestWebsocket
 func TestInstance(e exchange.IBotExchange) error {
 	cfg := &config.Config{}
-	err := cfg.LoadConfig("../../testdata/configtest.json", true)
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("Getwd() error: %w", err)
+	}
+	// Walk back to root of GCT
+	root := rootRE.FindStringSubmatch(wd)
+	if len(root) != 2 {
+		return fmt.Errorf("could not find root of gocyptotrader in %s", wd)
+	}
+
+	err = cfg.LoadConfig(root[1]+"/testdata/configtest.json", true)
 	if err != nil {
 		return fmt.Errorf("LoadConfig() error: %w", err)
 	}
